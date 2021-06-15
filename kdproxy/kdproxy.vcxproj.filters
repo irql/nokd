@@ -6,8 +6,14 @@
     <ClCompile Include="nt.c" />
     <ClCompile Include="prcb.c" />
     <ClCompile Include="com.c" />
+    <ClCompile Include="swc.c" />
+    <ClCompile Include="kdapi.c" />
+    <ClCompile Include="mmdbg.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="kd.h" />
+    <ClInclude Include="dbgkd.h" />
+    <ClInclude Include="kdapi.h" />
+    <ClInclude Include="mmdbg.h" />
   </ItemGroup>
 </Project>

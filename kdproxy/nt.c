@@ -224,6 +224,8 @@ KdSearchSignature(
     CHAR*  Sig;
     UCHAR* Match;
 
+    DbgPrint( "KdSearchSignature: %p %lx %s\n", BaseAddress, Length, Signature );
+
     Sig = Signature;
     Pos = ( UCHAR* )BaseAddress;
     End = ( UCHAR* )BaseAddress + Length;

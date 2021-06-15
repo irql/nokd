@@ -138,6 +138,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
       <EntryPointSymbol>KdDriverLoad</EntryPointSymbol>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
     </Link>
     <ClCompile>
       <BufferSecurityCheck>false</BufferSecurityCheck>
@@ -152,12 +153,18 @@
   <ItemGroup>
     <ClCompile Include="com.c" />
     <ClCompile Include="init.c" />
+    <ClCompile Include="kdapi.c" />
+    <ClCompile Include="mmdbg.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="prcb.c" />
+    <ClCompile Include="swc.c" />
     <ClCompile Include="uart16550.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dbgkd.h" />
     <ClInclude Include="kd.h" />
+    <ClInclude Include="kdapi.h" />
+    <ClInclude Include="mmdbg.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

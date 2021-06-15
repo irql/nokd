@@ -4,13 +4,13 @@
 KD_UART_STATUS
 KdUart16550SendByte(
     _In_ PKD_PORT Port,
-    _In_ CHAR     Byte
+    _In_ UCHAR    Byte
 );
 
 KD_UART_STATUS
 KdUart16550RecvByte(
     _In_ PKD_PORT Port,
-    _In_ PCHAR    Byte
+    _In_ PUCHAR   Byte
 );
 
 #define COM_DATA_REG                0
@@ -83,6 +83,8 @@ KdUart16550InitializePort(
 
     Port->Recv = KdUart16550RecvByte;
     Port->Send = KdUart16550SendByte;
+
+    return KdUartSuccess;
 }
 
 BOOLEAN
@@ -104,29 +106,37 @@ KdUart16550RecvReady(
 KD_UART_STATUS
 KdUart16550SendByte(
     _In_ PKD_PORT Port,
-    _In_ CHAR     Byte
+    _In_ UCHAR    Byte
 )
 {
     while ( !KdUart16550SendReady( Port ) )
         ;
 
     __outbyte( Port->Uart.Base + COM_DATA_REG, Byte );
+
+    return KdUartSuccess;
 }
 
 KD_UART_STATUS
 KdUart16550RecvByte(
     _In_ PKD_PORT Port,
-    _In_ PCHAR    Byte
+    _In_ PUCHAR   Byte
 )
 {
-    /*
-    if ( !KdUart16550RecvReady( Port ) ) {
+    ULONG64 TimeOut = 400000;
+
+    while ( !KdUart16550RecvReady( Port ) && TimeOut != 0 ) {
+
+        TimeOut--;
+    }
+
+    if ( TimeOut > 0 ) {
+        *Byte = __inbyte( Port->Uart.Base + COM_DATA_REG );
+
+        return KdUartSuccess;
+    }
+    else {
 
         return KdUartNoData;
-    }*/
-
-    while ( !KdUart16550RecvReady( Port ) )
-        ;
-
-    __inbyte( Port->Uart.Base + COM_DATA_REG );
+    }
 }
