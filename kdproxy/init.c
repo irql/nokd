@@ -33,6 +33,8 @@ NTSTATUS( *KdpSysWriteControlSpace )(
     _Out_ PULONG TransferLength
     );
 
+PUSHORT KeProcessorLevel;
+
 //
 // This function enables the TraceFlag if requested,
 // and sets the dr7 on all processors in the KiProcessorBlock
@@ -96,20 +98,61 @@ KdBreakTimerDpcCallback(
     //
     //
 
-    KIRQL PreviousIrql;
-    ULONG Interrupts;
-    DBGKD_WAIT_STATE_CHANGE Change;
+    KeCancelTimer( &KdBreakTimer );
 
-    KeRaiseIrql( HIGH_LEVEL, &PreviousIrql );
-    Interrupts = __readeflags( ) & 0x200;
-    _disable( );
+    KIRQL                   PreviousIrql;
+    //ULONG                   Interrupts;
+    //STRING                  Head;
+    //DBGKD_WAIT_STATE_CHANGE Change = { 0 };
+    //CONTEXT                 ZeroContext = { 0 };
+    //SIZE_T                  InstructionCount;
+
+    KeRaiseIrql( DISPATCH_LEVEL, &PreviousIrql );
+    //KeRaiseIrql( HIGH_LEVEL, &PreviousIrql );
+    //Interrupts = __readeflags( ) & 0x200;
+    //_disable( );
+
+    DbgPrint( "Kd Query!\n" );
 
     if ( KdPollBreakIn( ) ) {
 
-        KdpSendWaitContinue( )
+        DbgPrint( "Broke in!\n" );
+
+        //Interrupts = KeFreezeExecution( );
+#if 0
+        Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
+        Head.MaximumLength = 0;
+        Head.Buffer = ( PCHAR )&Change;
+
+        Change.ApiNumber = 0x3030;
+        Change.CurrentThread = ( ULONG64 )KeGetCurrentThread( );
+        Change.Processor = ( USHORT )KeGetCurrentProcessorNumber( );
+        Change.ProgramCounter = ( ULONG64 )KdBreakTimerDpcCallback;
+        Change.ProcessorLevel = *KeProcessorLevel;
+        Change.u.Exception.FirstChance = FALSE;
+        Change.u.Exception.ExceptionRecord.ExceptionCode = 0x80000003;
+        Change.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdBreakTimerDpcCallback;
+        Change.ControlReport.SegCs = 0x10;
+        Change.ControlReport.ReportFlags = 3;
+
+        RtlZeroMemory( &Change.ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
+
+        MmCopyMemory( Change.ControlReport.InstructionStream,
+            ( PVOID )Change.ProgramCounter,
+                      0x10,
+                      MM_COPY_ADDRESS_VIRTUAL,
+                      &InstructionCount );
+        Change.ControlReport.InstructionCount = ( USHORT )InstructionCount;
+
+        KdpSendWaitContinue( 0,
+                             &Head,
+                             NULL,
+                             &ZeroContext );
+#endif
+        //KeThawExecution( ( BOOLEAN )Interrupts );
     }
 
-    __writeeflags( __readeflags( ) | Interrupts );
+    //__writeeflags( __readeflags( ) | Interrupts );
     KeLowerIrql( PreviousIrql );
 
 }
@@ -150,6 +193,7 @@ KdDriverLoad(
     ULONG_PTR          KdpSysReadControlSpaceAddress;
     ULONG_PTR          KdpSysWriteControlSpaceAddress;
     ULONG_PTR          KdpGetStateChangeAddress;
+    ULONG_PTR          KeProcessorLevelAddress;
     PKDDEBUGGER_DATA64 KdDebuggerDataBlockDefault;
     LARGE_INTEGER      DueTime;
 
@@ -246,9 +290,16 @@ KdDriverLoad(
         return STATUS_UNSUCCESSFUL;
     }
 
-    MmGetPagedPoolCommitPointerAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )TextSectionBase ),
-                                                                         TextSectionSize,
-                                                                         "E8 ? ? ? ? 48 89 05 ? ? ? ? 48 8D 1D ? ? ? ? 48 8D 05 ? ? ? ? " );
+    //E8 ? ? ? ? E9 ? ? ? ? FD 
+    //KeSwitchFrozenProcessor = ( PVOID )( KeSwitchFrozenProcessorAddress + 5 + *( LONG32* )( KeSwitchFrozenProcessorAddress + 1 ) );
+    KeSwitchFrozenProcessor = ( PVOID )( KeSwitchFrozenProcessorAddress );
+
+    DbgPrint( "KeSwitchFrozenProcessor at %p\n", KeSwitchFrozenProcessor );
+
+    MmGetPagedPoolCommitPointerAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )PageKdSectionBase ),
+                                                                         PageKdSectionSize,
+                                                                         "E8 ? ? ? ? 48 89 05 ? ? ? ? 48 8D 3D ? ? ? ?" );
+    //"E8 ? ? ? ? 48 89 05 ? ? ? ? 48 8D 1D ? ? ? ? 48 8D 05 ? ? ? ? " ); TextSec
 
     if ( MmGetPagedPoolCommitPointerAddress == 0 ) {
 
@@ -258,12 +309,7 @@ KdDriverLoad(
 
     MmGetPagedPoolCommitPointer = ( PVOID )( MmGetPagedPoolCommitPointerAddress + 5 + *( LONG32* )( MmGetPagedPoolCommitPointerAddress + 1 ) );
 
-
-    //E8 ? ? ? ? E9 ? ? ? ? FD 
-    //KeSwitchFrozenProcessor = ( PVOID )( KeSwitchFrozenProcessorAddress + 5 + *( LONG32* )( KeSwitchFrozenProcessorAddress + 1 ) );
-    KeSwitchFrozenProcessor = ( PVOID )( KeSwitchFrozenProcessorAddress );
-
-    DbgPrint( "KeSwitchFrozenProcessor at %p\n", KeSwitchFrozenProcessor );
+    DbgPrint( "MmGetPagedPoolCommitPointer: %p\n", MmGetPagedPoolCommitPointer );
 
     KdCopyDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )TextSectionBase ),
                                                              TextSectionSize,
@@ -303,6 +349,8 @@ KdDriverLoad(
 
     KdpSysWriteControlSpace = ( PVOID )( KdpSysWriteControlSpaceAddress + 5 + *( LONG32* )( KdpSysWriteControlSpaceAddress + 1 ) );
 
+    DbgPrint( "KdpSysWriteControlSpace: %p\n", KdpSysWriteControlSpace );
+
     KdpGetStateChangeAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )PageKdSectionBase ),
                                                                PageKdSectionSize,
                                                                "40 53 48 83 EC 20 83 79 10 00" );
@@ -314,16 +362,24 @@ KdDriverLoad(
 
     KdpGetStateChange = ( PVOID )KdpGetStateChangeAddress;
 
-    KeInitializeDpc( &KdBreakDpc,
-        ( PKDEFERRED_ROUTINE )KdBreakTimerDpcCallback,
-                     NULL );
+    DbgPrint( "KdpGetStateChange: %p\n", KdpGetStateChange );
 
-    KeInitializeTimerEx( &KdBreakTimer, NotificationTimer );
+    KeProcessorLevelAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )TextSectionBase ),
+                                                              TextSectionSize,
+                                                              "66 89 01 0F B7 05 ? ? ? ? 66 89 41 02" );
+    //"0F B7 05 ? ? ? ? 49 8B D8" );
 
-    DueTime.QuadPart = -10000000;
-    KeSetTimerEx( &KdBreakTimer, DueTime, 1000, &KdBreakDpc );
+    if ( KeProcessorLevelAddress == 0 ) {
 
-    *KdpDebugRoutineSelect = 0;
+        DbgPrint( "KeProcessorLevel not found\n" );
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + *( LONG32* )( KeProcessorLevelAddress + 6 ) );
+
+    DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
+
+    //*KdpDebugRoutineSelect = 0;
 
     KdEnteredDebugger = FALSE;
     KdDebuggerNotPresent_ = FALSE;
@@ -337,8 +393,6 @@ KdDriverLoad(
 
     InitializeListHead( &KdpDebuggerDataListHead );
     InsertTailList( &KdpDebuggerDataListHead, ( PLIST_ENTRY )&KdDebuggerDataBlock.Header.List );
-
-
 
     KdDebuggerDataBlock.MmPagedPoolCommit = ( ULONG64 )MmGetPagedPoolCommitPointer( );
     KdDebuggerDataBlock.KeLoaderBlock = ( ULONG64 )&KdpLoaderDebuggerBlock;
@@ -355,6 +409,24 @@ KdDriverLoad(
     KdVersionBlock.KernBase = ( ULONG64 )ImageBase;
 
     // TODO: Initialize KdpContext.
+
+    KdUart16550InitializePort( &KdpPortDevice,
+                               2 );
+
+    KIRQL x = KeRaiseIrqlToDpcLevel( );
+    KdPollBreakIn( );
+    KeLowerIrql( x );
+
+    DbgPrint( "Polled break in!\n" );
+
+    KeInitializeDpc( &KdBreakDpc,
+        ( PKDEFERRED_ROUTINE )KdBreakTimerDpcCallback,
+                     NULL );
+
+    KeInitializeTimerEx( &KdBreakTimer, NotificationTimer );
+
+    DueTime.QuadPart = -10000000;
+    //KeSetTimerEx( &KdBreakTimer, DueTime, 1000, &KdBreakDpc );
 
     return STATUS_SUCCESS;
 }

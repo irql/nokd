@@ -601,8 +601,9 @@ typedef enum _KD_API_NUMBER {
 } KD_API_NUMBER, *PKD_API_NUMBER;
 
 typedef struct _DBGKD_CONTROL_REPORT {
-    ULONG   Dr6;
-    ULONG   Dr7;
+    ULONG64 Dr6;
+    ULONG64 Dr7;
+    ULONG   EFlags;
     USHORT  InstructionCount;
     USHORT  ReportFlags;
     UCHAR   InstructionStream[ 16 ];
@@ -610,14 +611,13 @@ typedef struct _DBGKD_CONTROL_REPORT {
     USHORT  SegDs;
     USHORT  SegEs;
     USHORT  SegFs;
-    ULONG   EFlags;
 } DBGKD_CONTROL_REPORT, *PDBGKD_CONTROL_REPORT;
 
 typedef struct _DBGKD_WAIT_STATE_CHANGE {
-    ULONG32 NewState;
+    ULONG32 ApiNumber;
     unsigned __int16 ProcessorLevel;
     unsigned __int16 Processor;
-    int ReturnStatus;
+    ULONG32 ProcessorCount;
     ULONG64 CurrentThread;
     ULONG64 ProgramCounter;
 
@@ -629,6 +629,7 @@ typedef struct _DBGKD_WAIT_STATE_CHANGE {
         // command strings, and maybe more i missed
         // inside KdTrap
     } u;
+    DBGKD_CONTROL_REPORT ControlReport;
 } DBGKD_WAIT_STATE_CHANGE, *PDBGKD_WAIT_STATE_CHANGE;
 
 #define KD_LEADER_BREAK_IN      0x62626262

@@ -66,7 +66,7 @@ KdUart16550InitializePort(
         Port->Uart.Base = 0x2E8;
         break;
     default:
-        __assume( 0 );
+        NT_ASSERT( FALSE );
     }
 
     __outbyte( Port->Uart.Base + COM_INTERRUPT_ENABLE_REG, 0 );
@@ -109,12 +109,22 @@ KdUart16550SendByte(
     _In_ UCHAR    Byte
 )
 {
-    while ( !KdUart16550SendReady( Port ) )
-        ;
+    ULONG64 TimeOut = 4000;
 
-    __outbyte( Port->Uart.Base + COM_DATA_REG, Byte );
+    while ( !KdUart16550SendReady( Port ) && TimeOut != 0 ) {
 
-    return KdUartSuccess;
+        TimeOut--;
+    }
+
+    if ( TimeOut > 0 ) {
+        __outbyte( Port->Uart.Base + COM_DATA_REG, Byte );
+
+        return KdUartSuccess;
+    }
+    else {
+
+        return KdUartError;
+    }
 }
 
 KD_UART_STATUS
@@ -123,7 +133,9 @@ KdUart16550RecvByte(
     _In_ PUCHAR   Byte
 )
 {
-    ULONG64 TimeOut = 400000;
+    ULONG64 TimeOut = 4000;
+
+    DbgPrint( "begin recv! %lx\n", Port->Uart.Base );
 
     while ( !KdUart16550RecvReady( Port ) && TimeOut != 0 ) {
 
@@ -136,6 +148,7 @@ KdUart16550RecvByte(
         return KdUartSuccess;
     }
     else {
+        DbgPrint( "time out!\n" );
 
         return KdUartNoData;
     }

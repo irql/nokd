@@ -190,6 +190,13 @@ KdpSendWaitContinue(
     _In_ PCONTEXT Context
 );
 
+VOID
+KdpSetCommonState(
+    _In_    ULONG32                  ApiNumber,
+    _In_    PCONTEXT                 Context,
+    _Inout_ PDBGKD_WAIT_STATE_CHANGE Change
+);
+
 //
 // IMPORTS
 //
@@ -244,3 +251,7 @@ EXTERN_C DBGKD_GET_VERSION64 KdVersionBlock;
 EXTERN_C LIST_ENTRY          KdpDebuggerDataListHead;
 EXTERN_C ULONG64             KdpLoaderDebuggerBlock;
 EXTERN_C KD_CONTEXT          KdpContext;
+
+EXTERN_C KD_PORT             KdpPortDevice;
+
+EXTERN_C PUSHORT             KeProcessorLevel;

@@ -75,7 +75,6 @@ KdReceivePacket(
     PKD_PACKET     PacketBuffer = ( PKD_PACKET )&Buffer;
 
     NT_ASSERT( KeGetCurrentIrql( ) >= DISPATCH_LEVEL );
-    NT_ASSERT( Head->MaximumLength >= sizeof( KD_PACKET ) );
 
     while ( 1 ) {
 
@@ -95,7 +94,6 @@ KdReceivePacket(
             if ( UartStatus == KdUartNoData &&
                  Index == 0 ) {
 
-                // may consider adding some timing?
                 return KdStatusTimeOut;
             }
 
@@ -142,8 +140,31 @@ KdReceivePacket(
         if ( PacketBuffer->PacketLength > sizeof( KD_PACKET ) ) {
 
             KdpRecvString( Head->Buffer + Index, PacketBuffer->PacketLength - sizeof( KD_PACKET ) );
-    }
+        }
 #endif
+
+        if ( Head != NULL && Head->MaximumLength >= sizeof( KD_PACKET ) ) {
+
+            PacketBuffer->PacketLength -= sizeof( KD_PACKET );
+            if ( PacketBuffer->PacketLength > 0 &&
+                 Head->MaximumLength > sizeof( KD_PACKET ) ) {
+
+                KdpRecvString( Head->Buffer,
+                               Head->Length );
+                PacketBuffer->PacketLength -= Head->Length;
+
+                if ( Body != NULL ) {
+
+                    KdpRecvString( Body->Buffer,
+                                   Body->Length );
+                    PacketBuffer->PacketLength -= Body->Length;
+
+                    if ( PacketBuffer->PacketLength != 0 )
+                        DbgPrint( "NON ZERO!" );
+                }
+
+            }
+        }
 
         //
         // PacketBuffer has our KD_PACKET Header
@@ -159,6 +180,14 @@ KdReceivePacket(
                     continue;
                 }
             }
+
+            if ( PacketBuffer->PacketId != KdCompPacketIdExpected ) {
+
+                // cry about it.
+            }
+
+            KdpSendControlPacket( KdTypeAcknowledge, PacketBuffer->PacketId );
+            KdCompPacketIdExpected ^= 1;
 
             return KdStatusOkay;
         }
@@ -188,7 +217,7 @@ KdReceivePacket(
             }
         }
 
-}
+    }
 
     return KdStatusTimeOut;
 
@@ -305,7 +334,7 @@ KdpRecvString(
             *TimeOut = 0;
         }
 
-}
+    }
 #endif
 
     KD_UART_STATUS UartStatus;

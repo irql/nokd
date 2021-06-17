@@ -15,6 +15,49 @@ KdPollBreakIn(
                             &KdpContext ) == KdUartSuccess;
 }
 
+VOID
+KdpSetCommonState(
+    _In_    ULONG32                  ApiNumber,
+    _In_    PCONTEXT                 Context,
+    _Inout_ PDBGKD_WAIT_STATE_CHANGE Change
+)
+{
+    SIZE_T InstructionCount;
+
+    Change->ApiNumber = ApiNumber;
+    Change->Processor = ( USHORT )KeGetCurrentProcessorNumber( );
+    Change->ProcessorCount = KeQueryActiveProcessorCountEx( 0xFFFF );
+    Change->ProcessorLevel = *KeProcessorLevel;
+    Change->CurrentThread = ( ULONG64 )KeGetCurrentThread( );
+    Change->ProgramCounter = Context->Rip;
+
+    RtlZeroMemory( &Change->ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
+
+    MmCopyMemory( Change->ControlReport.InstructionStream,
+        ( PVOID )Context->Rip,
+                  0x10,
+                  MM_COPY_ADDRESS_VIRTUAL,
+                  &InstructionCount );
+    Change->ControlReport.InstructionCount = ( USHORT )InstructionCount;
+
+}
+
+VOID
+KdpSetContextState(
+    _Inout_ PDBGKD_WAIT_STATE_CHANGE Change,
+    _In_    PCONTEXT                 Context
+)
+{
+    Context;
+    // TODO: Must call real KdpSetContextState.
+    // dr's come from Prcb->ProcessorState.
+
+    Change->ControlReport.Dr6 = 0;
+    Change->ControlReport.Dr7 = 0;
+    Change->ControlReport.SegCs = 0x10;
+    Change->ControlReport.ReportFlags = 0x3;
+}
+
 BOOLEAN
 KdpSendWaitContinue(
     _In_ ULONG64  Unused,
