@@ -379,6 +379,20 @@ KdDriverLoad(
 
     DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
 
+    if ( !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 1 ) ) &&
+         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 2 ) ) &&
+         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 3 ) ) &&
+         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 4 ) ) ) {
+
+        DbgPrint( "No suitable KdpPortDevice\n" );
+
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    DbgPrint( "KdpPortDevice initialized %d %lx\n",
+              KdpPortDevice.Uart.Index,
+              KdpPortDevice.Uart.Base );
+
     //*KdpDebugRoutineSelect = 0;
 
     KdEnteredDebugger = FALSE;
@@ -409,9 +423,6 @@ KdDriverLoad(
     KdVersionBlock.KernBase = ( ULONG64 )ImageBase;
 
     // TODO: Initialize KdpContext.
-
-    KdUart16550InitializePort( &KdpPortDevice,
-                               2 );
 
     KIRQL x = KeRaiseIrqlToDpcLevel( );
     KdPollBreakIn( );

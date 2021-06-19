@@ -91,8 +91,7 @@ KdReceivePacket(
         do {
             UartStatus = KdpRecvString( Buffer + Index, 1 );
 
-            if ( UartStatus == KdUartNoData &&
-                 Index == 0 ) {
+            if ( UartStatus != KdUartSuccess ) {
 
                 return KdStatusTimeOut;
             }
@@ -243,6 +242,12 @@ KdpSendString(
 }
 
 KD_UART_STATUS
+KdUart16550RecvByte(
+    _In_ PKD_PORT Port,
+    _In_ PUCHAR   Byte
+);
+
+KD_UART_STATUS
 KdpRecvString(
     _In_ PVOID String,
     _In_ ULONG Length
@@ -344,7 +349,8 @@ KdpRecvString(
 
     while ( Length-- ) {
 
-        UartStatus = KdpPortDevice.Recv( &KdpPortDevice, String1 );
+        UartStatus = KdUart16550RecvByte( &KdpPortDevice, String1 );
+        //KdpPortDevice.Recv( &KdpPortDevice, String1 );
 
         if ( UartStatus != KdUartSuccess ) {
 
