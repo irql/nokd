@@ -12,7 +12,7 @@ KdPollBreakIn(
                             NULL,
                             NULL,
                             NULL,
-                            &KdpContext ) == KdUartSuccess;
+                            &KdpContext ) == KdStatusSuccess;
 }
 
 VOID

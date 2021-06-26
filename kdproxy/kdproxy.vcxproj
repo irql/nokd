@@ -145,26 +145,33 @@
     </ClCompile>
     <ClCompile>
       <ControlFlowGuard>false</ControlFlowGuard>
+      <AdditionalIncludeDirectories>$(ProjectDir)inc\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="com.c" />
+    <ClCompile Include="communic\communic.c" />
     <ClCompile Include="init.c" />
     <ClCompile Include="kdapi.c" />
     <ClCompile Include="mmdbg.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="prcb.c" />
     <ClCompile Include="swc.c" />
-    <ClCompile Include="uart16550.c" />
+    <ClCompile Include="communic\uart.c" />
+    <ClCompile Include="communic\vmwrpc.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="dbgkd.h" />
-    <ClInclude Include="kd.h" />
-    <ClInclude Include="kdapi.h" />
-    <ClInclude Include="mmdbg.h" />
+    <ClInclude Include="inc\dbgkd.h" />
+    <ClInclude Include="inc\kd.h" />
+    <ClInclude Include="inc\kdapi.h" />
+    <ClInclude Include="inc\mmdbg.h" />
+    <ClInclude Include="inc\uart.h" />
+    <ClInclude Include="inc\vmwrpc.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="communic\vmwrpc64.asm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

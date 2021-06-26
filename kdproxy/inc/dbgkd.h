@@ -953,15 +953,14 @@ typedef struct _KDDEBUGGER_DATA64 {
 
 C_ASSERT( sizeof( KDDEBUGGER_DATA64 ) == 0x380 );
 
+#pragma pack( push, 2 )
 typedef struct _KD_CONTEXT {
-    ULONG32                       MaxRetryCount;
-    BOOLEAN                       InstantBreak;
-    PDEBUG_DEVICE_DESCRIPTOR      DebugDevice;
-    ULONG64                       p3;
-    ULONG64                       p4;
+    ULONG32                       RetryCount;
+    BOOLEAN                       BreakRequested;
 } KD_CONTEXT, *PKD_CONTEXT;
+#pragma pack( pop )
 
-C_ASSERT( sizeof( KD_CONTEXT ) == 0x20 );
+C_ASSERT( sizeof( KD_CONTEXT ) == 0x6 );
 
 typedef struct _KD_PACKET {
     ULONG32 PacketLeader;

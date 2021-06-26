@@ -2,18 +2,24 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="init.c" />
-    <ClCompile Include="uart16550.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="prcb.c" />
-    <ClCompile Include="com.c" />
     <ClCompile Include="swc.c" />
     <ClCompile Include="kdapi.c" />
     <ClCompile Include="mmdbg.c" />
+    <ClCompile Include="communic\vmwrpc.c" />
+    <ClCompile Include="communic\communic.c" />
+    <ClCompile Include="communic\uart.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="kd.h" />
-    <ClInclude Include="dbgkd.h" />
-    <ClInclude Include="kdapi.h" />
-    <ClInclude Include="mmdbg.h" />
+    <ClInclude Include="inc\kd.h" />
+    <ClInclude Include="inc\vmwrpc.h" />
+    <ClInclude Include="inc\dbgkd.h" />
+    <ClInclude Include="inc\kdapi.h" />
+    <ClInclude Include="inc\mmdbg.h" />
+    <ClInclude Include="inc\uart.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="communic\vmwrpc64.asm" />
   </ItemGroup>
 </Project>

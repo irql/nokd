@@ -52,31 +52,83 @@ MmCopyVirtualMemory(
 // STRUCTURES, ENUMERATIONS AND TYPEDEFS
 //
 
+typedef struct _KD_VMWRPC_CONTROL {
+    ULONG32 Cookie1;
+    ULONG32 Cookie2;
+    ULONG32 Channel;
+    ULONG32 RecvId;
+
+    ULONG32 RecvExtraLength;
+    PVOID   RecvExtraBuffer;
+} KD_VMWRPC_CONTROL, *PKD_VMWRPC_CONTROL;
+
 typedef struct _KD_UART_CONTROL {
     ULONG64 Index;
     USHORT  Base;
 } KD_UART_CONTROL, *PKD_UART_CONTROL;
 
-typedef enum _KD_UART_STATUS {
-    KdUartSuccess,
-    KdUartError,
-    KdUartNoData
+typedef struct _KD_DEBUG_DEVICE *PKD_DEBUG_DEVICE;
 
-} KD_UART_STATUS, *PKD_UART_STATUS;
+typedef enum _KD_STATUS {
+    KdStatusSuccess = 0,
+    KdStatusTimeOut = 1,
+    KdStatusError   = 2,
+    KdStatusResend,
+} KD_STATUS, *PKD_STATUS;
 
-typedef struct _KD_PORT *PKD_PORT;
+typedef struct _KD_DEBUG_DEVICE {
 
-typedef struct _KD_PORT {
+    //
+    // This structure is supposed to replace the interface of which 
+    // kd* dll's provide, these dll's export a few functions which the OS 
+    // would call, such as KdReceivePacket & KdSendPacket, and they are 
+    // responsible for communication between the target & host. 
+    //
 
-    KD_UART_CONTROL  Uart;
+    union {
+        KD_UART_CONTROL   Uart;
+        KD_VMWRPC_CONTROL VmwRpc;
+    };
+#if 0
     KD_UART_STATUS( *Send )(
-        _In_ PKD_PORT Port,
+        _In_ PKD_DEBUG_DEVICE Port,
         _In_ UCHAR    Byte );
     KD_UART_STATUS( *Recv )(
-        _In_ PKD_PORT Port,
+        _In_ PKD_DEBUG_DEVICE Port,
         _In_ PUCHAR   Byte );
+#endif
+#if 0
+    KD_STATUS( *Send )(
+        _In_ PKD_DEBUG_DEVICE DebugDevice,
+        _In_ PVOID            String,
+        _In_ ULONG            Length );
+    KD_STATUS( *Recv )(
+        _In_ PKD_DEBUG_DEVICE DebugDevice,
+        _In_ PVOID            String,
+        _In_ ULONG            Length );
+#endif
+    //
+    // List of kd* dll api's:
+    //  KdReceivePacket
+    //  KdSendPacket
+    //  KdPower
+    //  KdInitialize
+    //  KdSetHiberRange
+    //
 
-} KD_PORT, *PKD_PORT;
+    KD_STATUS( *KdSendPacket )(
+        _In_     KD_PACKET_TYPE PacketType,
+        _In_     PSTRING        Head,
+        _In_opt_ PSTRING        Body,
+        _Inout_  PKD_CONTEXT    KdContext );
+    KD_STATUS( *KdReceivePacket )(
+        _In_    KD_PACKET_TYPE PacketType,
+        _Inout_ PSTRING        Head,
+        _Inout_ PSTRING        Body,
+        _Out_   PULONG32       Length,
+        _Inout_ PKD_CONTEXT    KdContext );
+
+} KD_DEBUG_DEVICE, *PKD_DEBUG_DEVICE;
 
 typedef struct _KD_PRCB {
     ULONG32           Number;
@@ -85,12 +137,6 @@ typedef struct _KD_PRCB {
     PVOID             NtPrcb;
 
 } KD_PRCB, *PKD_PRCB;
-
-typedef enum _KD_STATUS {
-    KdStatusOkay,
-    KdStatusTimeOut,
-    KdStatusResend,
-} KD_STATUS, *PKD_STATUS;
 
 #define KD_BPE_SET      (0x00000001)
 
@@ -113,12 +159,6 @@ typedef struct _KD_BREAKPOINT_ENTRY {
 //
 // FUNCTION DEFINITIONS
 //
-
-KD_UART_STATUS
-KdUart16550InitializePort(
-    _In_ PKD_PORT Port,
-    _In_ ULONG64  Index
-);
 
 NTSTATUS
 KdImageAddress(
@@ -143,7 +183,7 @@ KdSearchSignature(
 );
 
 KD_STATUS
-KdpSendControlPacket(
+KdUart16550SendControlPacket(
     _In_ ULONG32 PacketType,
     _In_ ULONG32 PacketId
 );
@@ -163,18 +203,6 @@ KdReceivePacket(
     _Out_ PSTRING     Body,
     _Out_ PULONG32    Length,
     _In_  PKD_CONTEXT Context
-);
-
-KD_UART_STATUS
-KdpRecvString(
-    _In_ PVOID String,
-    _In_ ULONG Length
-);
-
-KD_UART_STATUS
-KdpSendString(
-    _In_ PVOID String,
-    _In_ ULONG Length
 );
 
 BOOLEAN
@@ -252,6 +280,6 @@ EXTERN_C LIST_ENTRY          KdpDebuggerDataListHead;
 EXTERN_C ULONG64             KdpLoaderDebuggerBlock;
 EXTERN_C KD_CONTEXT          KdpContext;
 
-EXTERN_C KD_PORT             KdpPortDevice;
+EXTERN_C KD_DEBUG_DEVICE             KdDebugDevice;
 
 EXTERN_C PUSHORT             KeProcessorLevel;

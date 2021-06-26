@@ -379,19 +379,14 @@ KdDriverLoad(
 
     DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
 
-    if ( !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 1 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 2 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 3 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( &KdpPortDevice, 4 ) ) ) {
-
-        DbgPrint( "No suitable KdpPortDevice\n" );
+    if ( !NT_SUCCESS( KdUart16550Initialize( &KdDebugDevice ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
     }
+    else {
 
-    DbgPrint( "KdpPortDevice initialized %d %lx\n",
-              KdpPortDevice.Uart.Index,
-              KdpPortDevice.Uart.Base );
+        DbgPrint( "KdDebugDevice initialized to UART16550 #%d\n", KdDebugDevice.Uart.Index );
+    }
 
     //*KdpDebugRoutineSelect = 0;
 

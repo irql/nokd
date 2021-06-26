@@ -144,6 +144,7 @@
     </ClCompile>
     <ClCompile>
       <ControlFlowGuard>false</ControlFlowGuard>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -1,5 +1,5 @@
 ﻿
-#include "kd.h"
+#include <kd.h>
 
 ULONG32             KdTransportMaxPacketSize = 0xFA0; // 4000.
 KD_BREAKPOINT_ENTRY KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ];
@@ -102,7 +102,7 @@ KdpGetContext(
     Packet;
     Body;
 
-    return KdStatusOkay;
+    return KdStatusSuccess;
 }
 
 KD_STATUS
@@ -119,7 +119,7 @@ KdpSetContext(
     Packet;
     Body;
 
-    return KdStatusOkay;
+    return KdStatusSuccess;
 }
 
 static ULONG BreakpointCodeLength = 1;
