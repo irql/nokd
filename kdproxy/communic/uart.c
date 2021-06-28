@@ -33,14 +33,14 @@ KdpIdentifyUart(
 #endif
 
 NTSTATUS
-KdUart16550Initialize(
-    _In_ PKD_DEBUG_DEVICE DebugDevice
+KdUartInitialize(
+
 )
 {
-    if ( !NT_SUCCESS( KdUart16550InitializePort( DebugDevice, 1 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( DebugDevice, 2 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( DebugDevice, 3 ) ) &&
-         !NT_SUCCESS( KdUart16550InitializePort( DebugDevice, 4 ) ) ) {
+    if ( !NT_SUCCESS( KdUartInitializePort( &KdDebugDevice, 1 ) ) &&
+         !NT_SUCCESS( KdUartInitializePort( &KdDebugDevice, 2 ) ) &&
+         !NT_SUCCESS( KdUartInitializePort( &KdDebugDevice, 3 ) ) &&
+         !NT_SUCCESS( KdUartInitializePort( &KdDebugDevice, 4 ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
     }
@@ -49,7 +49,7 @@ KdUart16550Initialize(
 }
 
 NTSTATUS
-KdUart16550InitializePort(
+KdUartInitializePort(
     _In_ PKD_DEBUG_DEVICE DebugDevice,
     _In_ ULONG64          Index
 )
@@ -126,7 +126,7 @@ KdUart16550InitializePort(
 
     //if ( __inbyte( DebugDevice->Uart.Base + COM_RBR ) != 0xAE ) {
 
-    if ( KdUart16550RecvByte( &DebugDevice->Uart, &FaultByte ) != KdStatusSuccess ||
+    if ( KdUartRecvByte( &DebugDevice->Uart, &FaultByte ) != KdStatusSuccess ||
          FaultByte != 0xAE ) {
 
         return STATUS_UNSUCCESSFUL;
@@ -134,14 +134,14 @@ KdUart16550InitializePort(
 
     __outbyte( DebugDevice->Uart.Base + COM_MCR, 0x0F );
 
-    DebugDevice->KdSendPacket = KdUart16550SendPacket;
-    DebugDevice->KdReceivePacket = KdUart16550RecvPacket;
+    DebugDevice->KdSendPacket = KdUartSendPacket;
+    DebugDevice->KdReceivePacket = KdUartRecvPacket;
 
     return STATUS_SUCCESS;
 }
 
 BOOLEAN
-KdUart16550SendReady(
+KdUartSendReady(
     _In_ PKD_UART_CONTROL Uart
 )
 {
@@ -149,7 +149,7 @@ KdUart16550SendReady(
 }
 
 BOOLEAN
-KdUart16550RecvReady(
+KdUartRecvReady(
     _In_ PKD_UART_CONTROL Uart
 )
 {
@@ -157,14 +157,14 @@ KdUart16550RecvReady(
 }
 
 KD_STATUS
-KdUart16550SendByte(
+KdUartSendByte(
     _In_ PKD_UART_CONTROL Uart,
     _In_ UCHAR            Byte
 )
 {
     ULONG64 TimeOut = 5000;
 
-    while ( !KdUart16550SendReady( Uart ) && TimeOut != 0 ) {
+    while ( !KdUartSendReady( Uart ) && TimeOut != 0 ) {
 
         KeStallExecutionProcessor( 100 );
         TimeOut--;
@@ -182,14 +182,14 @@ KdUart16550SendByte(
 }
 
 KD_STATUS
-KdUart16550RecvByte(
+KdUartRecvByte(
     _In_ PKD_UART_CONTROL Uart,
     _In_ PUCHAR           Byte
 )
 {
     ULONG64 TimeOut = 5000;
 
-    while ( !KdUart16550RecvReady( Uart ) && TimeOut != 0 ) {
+    while ( !KdUartRecvReady( Uart ) && TimeOut != 0 ) {
 
         KeStallExecutionProcessor( 100 );
         TimeOut--;
@@ -207,7 +207,7 @@ KdUart16550RecvByte(
 }
 
 KD_STATUS
-KdUart16550RecvString(
+KdUartRecvString(
     _In_ PKD_DEBUG_DEVICE DebugDevice,
     _In_ PVOID            String,
     _In_ ULONG            Length
@@ -219,7 +219,7 @@ KdUart16550RecvString(
 
     while ( Length-- ) {
 
-        if ( KdUart16550RecvByte( &DebugDevice->Uart, String1 ) != KdStatusSuccess ) {
+        if ( KdUartRecvByte( &DebugDevice->Uart, String1 ) != KdStatusSuccess ) {
 
             return KdStatusTimeOut;
         }
@@ -231,7 +231,7 @@ KdUart16550RecvString(
 }
 
 KD_STATUS
-KdUart16550SendString(
+KdUartSendString(
     _In_ PKD_DEBUG_DEVICE DebugDevice,
     _In_ PVOID            String,
     _In_ ULONG            Length
@@ -243,7 +243,7 @@ KdUart16550SendString(
 
     while ( Length-- ) {
 
-        if ( KdUart16550SendByte( &DebugDevice->Uart, *String1 ) != KdStatusSuccess ) {
+        if ( KdUartSendByte( &DebugDevice->Uart, *String1 ) != KdStatusSuccess ) {
 
             return KdStatusError;
         }
@@ -267,11 +267,11 @@ KdUart16550SendControlPacket(
     Packet.PacketLength = 0;
     Packet.Checksum = 0;
     Packet.PacketId = PacketId;
-    return KdUart16550SendString( &KdDebugDevice, &Packet, sizeof( KD_PACKET ) );
+    return KdUartSendString( &KdDebugDevice, &Packet, sizeof( KD_PACKET ) );
 }
 
 KD_STATUS
-KdUart16550SendPacket(
+KdUartSendPacket(
     _In_     KD_PACKET_TYPE PacketType,
     _In_     PSTRING        Head,
     _In_opt_ PSTRING        Body,
@@ -288,23 +288,23 @@ KdUart16550SendPacket(
     Packet.PacketLength = Head->Length + Body->Length;
     Packet.PacketType = ( USHORT )PacketType;
 
-    KdUart16550SendString( &KdDebugDevice,
-                           &Packet,
-                           sizeof( KD_PACKET ) );
-    KdUart16550SendString( &KdDebugDevice,
-                           Head->Buffer,
-                           Head->Length );
+    KdUartSendString( &KdDebugDevice,
+                      &Packet,
+                      sizeof( KD_PACKET ) );
+    KdUartSendString( &KdDebugDevice,
+                      Head->Buffer,
+                      Head->Length );
     if ( Body->Length ) {
-        KdUart16550SendString( &KdDebugDevice,
-                               Body->Buffer,
-                               Body->Length );
+        KdUartSendString( &KdDebugDevice,
+                          Body->Buffer,
+                          Body->Length );
     }
 
     return KdStatusSuccess;
 }
 
 KD_STATUS
-KdUart16550RecvPacket(
+KdUartRecvPacket(
     _In_    KD_PACKET_TYPE PacketType,
     _Inout_ PSTRING        Head,
     _Inout_ PSTRING        Body,
@@ -336,7 +336,7 @@ KdUart16550RecvPacket(
         //
 
         do {
-            Status = KdUart16550RecvString( &KdDebugDevice, Buffer + Index, 1 );
+            Status = KdUartRecvString( &KdDebugDevice, Buffer + Index, 1 );
 
             if ( Status != KdStatusSuccess ) {
 
@@ -366,7 +366,7 @@ KdUart16550RecvPacket(
 
         } while ( Index < 4 );
 
-        KdUart16550RecvString( &KdDebugDevice, &PacketBuffer->PacketType, 2 );
+        KdUartRecvString( &KdDebugDevice, &PacketBuffer->PacketType, 2 );
 
         if ( PacketBuffer->PacketLeader == KD_LEADER_CONTROL &&
              PacketBuffer->PacketType == KdTypeResend ) {
@@ -374,9 +374,9 @@ KdUart16550RecvPacket(
             return KdStatusResend;
         }
 
-        KdUart16550RecvString( &KdDebugDevice, &PacketBuffer->PacketLength, 2 );
-        KdUart16550RecvString( &KdDebugDevice, &PacketBuffer->PacketId, 4 );
-        KdUart16550RecvString( &KdDebugDevice, &PacketBuffer->Checksum, 4 );
+        KdUartRecvString( &KdDebugDevice, &PacketBuffer->PacketLength, 2 );
+        KdUartRecvString( &KdDebugDevice, &PacketBuffer->PacketId, 4 );
+        KdUartRecvString( &KdDebugDevice, &PacketBuffer->Checksum, 4 );
 
 #if 0
         //
@@ -385,9 +385,9 @@ KdUart16550RecvPacket(
 
         if ( PacketBuffer->PacketLength > sizeof( KD_PACKET ) ) {
 
-            KdUart16550RecvString( &KdDebugDevice,
-                                   Head->Buffer + Index,
-                                   PacketBuffer->PacketLength - sizeof( KD_PACKET ) );
+            KdUartRecvString( &KdDebugDevice,
+                              Head->Buffer + Index,
+                              PacketBuffer->PacketLength - sizeof( KD_PACKET ) );
         }
 #endif
 
@@ -397,16 +397,16 @@ KdUart16550RecvPacket(
             if ( PacketBuffer->PacketLength > 0 &&
                  Head->MaximumLength > sizeof( KD_PACKET ) ) {
 
-                KdUart16550RecvString( &KdDebugDevice,
-                                       Head->Buffer,
-                                       Head->Length );
+                KdUartRecvString( &KdDebugDevice,
+                                  Head->Buffer,
+                                  Head->Length );
                 PacketBuffer->PacketLength -= Head->Length;
 
                 if ( Body != NULL ) {
 
-                    KdUart16550RecvString( &KdDebugDevice,
-                                           Body->Buffer,
-                                           Body->Length );
+                    KdUartRecvString( &KdDebugDevice,
+                                      Body->Buffer,
+                                      Body->Length );
                     PacketBuffer->PacketLength -= Body->Length;
 
                     if ( PacketBuffer->PacketLength != 0 )

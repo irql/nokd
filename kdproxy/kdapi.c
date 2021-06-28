@@ -54,10 +54,10 @@ KdpReadVirtualMemory(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         Body,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -80,10 +80,10 @@ KdpWriteVirtualMemory(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -194,10 +194,10 @@ KdpProcedureDone:
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -237,10 +237,10 @@ KdpProcedureDone:
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -278,10 +278,10 @@ KdpReadControlSpace(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         Body,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -302,10 +302,10 @@ KdpWriteControlSpace(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -357,10 +357,10 @@ KdpReadIoSpace(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -412,10 +412,10 @@ KdpWriteIoSpace(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -443,10 +443,10 @@ KdpReadPhysicalMemory(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         Body,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -493,10 +493,10 @@ KdpProcedureDone:
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         Body,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
 
 }
 
@@ -520,8 +520,8 @@ KdpGetVersion(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    return KdSendPacket( KdTypeStateManipulate,
-                         &Reciprocate,
-                         NULL,
-                         &KdpContext );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }

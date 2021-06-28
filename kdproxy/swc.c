@@ -8,11 +8,11 @@ KdPollBreakIn(
 
 )
 {
-    return KdReceivePacket( KdTypePollBreakin,
-                            NULL,
-                            NULL,
-                            NULL,
-                            &KdpContext ) == KdStatusSuccess;
+    return KdDebugDevice.KdReceivePacket( KdTypePollBreakin,
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          &KdpContext ) == KdStatusSuccess;
 }
 
 VOID
@@ -66,6 +66,7 @@ KdpSendWaitContinue(
     _In_ PCONTEXT Context
 )
 {
+    Context;
     Unused;
 
     //
@@ -89,27 +90,27 @@ KdpSendWaitContinue(
     Body.Buffer = ( PCHAR )&KdpMessageBuffer;
 
 KdpResendPacket:
-    KdSendPacket( KdTypeStateChange,
-                  StateChangeHead,
-                  StateChangeBody,
-                  &KdpContext );
+    KdDebugDevice.KdSendPacket( KdTypeStateChange,
+                                StateChangeHead,
+                                StateChangeBody,
+                                &KdpContext );
 
     while ( !KdDebuggerNotPresent_ ) {
 
         while ( 1 ) {
 
-            Status = KdReceivePacket( KdTypeStateManipulate,
-                                      &Head,
-                                      &Body,
-                                      &Length,
-                                      &KdpContext );
+            Status = KdDebugDevice.KdReceivePacket( KdTypeStateManipulate,
+                                                    &Head,
+                                                    &Body,
+                                                    &Length,
+                                                    &KdpContext );
             if ( Status == KdStatusResend ) {
 
                 goto KdpResendPacket;
             }
 
-            if ( Status != KdStatusTimeOut ) {
-
+            if ( Status == KdStatusSuccess ) {
+#if 0
                 switch ( Packet.ApiNumber ) {
                 case KdApiReadMemory:
                     KdpReadVirtualMemory( &Packet,
@@ -181,14 +182,27 @@ KdpResendPacket:
                     Packet.ReturnStatus = STATUS_UNSUCCESSFUL;
                     Head.Buffer = ( PCHAR )&Packet;
                     Head.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
-                    KdSendPacket( KdTypeStateManipulate,
-                                  &Head,
-                                  NULL,
-                                  &KdpContext );
+                    KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                                &Head,
+                                                NULL,
+                                                &KdpContext );
                     break;
                 }
+#endif
+                DbgPrint( "KdApiNumber: %#.8lx - ReturnStatus=STATUS_UNSUCCESSFUL.\n", Packet.ApiNumber );
+                Packet.ReturnStatus = STATUS_UNSUCCESSFUL;
+                Head.Buffer = ( PCHAR )&Packet;
+                Head.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+                KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                            &Head,
+                                            NULL,
+                                            &KdpContext );
             }
 
+            LARGE_INTEGER Time;
+            Time.QuadPart = -10000000;
+            KeDelayExecutionThread( KernelMode, FALSE, &Time );
+            //KeStallExecutionProcessor( 500 * 1000 );
         }
 
     }

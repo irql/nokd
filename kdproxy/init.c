@@ -1,6 +1,8 @@
 ﻿
 
-#include "kd.h"
+#include <kd.h>
+#include <uart.h>
+#include <vmwrpc.h>
 
 BOOLEAN( *KeFreezeExecution )(
 
@@ -100,14 +102,14 @@ KdBreakTimerDpcCallback(
 
     KeCancelTimer( &KdBreakTimer );
 
-    KIRQL                   PreviousIrql;
+    //KIRQL                   PreviousIrql;
     //ULONG                   Interrupts;
-    //STRING                  Head;
-    //DBGKD_WAIT_STATE_CHANGE Change = { 0 };
-    //CONTEXT                 ZeroContext = { 0 };
-    //SIZE_T                  InstructionCount;
+    STRING                  Head;
+    DBGKD_WAIT_STATE_CHANGE Change = { 0 };
+    CONTEXT                 ZeroContext = { 0 };
+    SIZE_T                  InstructionCount;
 
-    KeRaiseIrql( DISPATCH_LEVEL, &PreviousIrql );
+    //KeRaiseIrql( DISPATCH_LEVEL, &PreviousIrql );
     //KeRaiseIrql( HIGH_LEVEL, &PreviousIrql );
     //Interrupts = __readeflags( ) & 0x200;
     //_disable( );
@@ -119,7 +121,7 @@ KdBreakTimerDpcCallback(
         DbgPrint( "Broke in!\n" );
 
         //Interrupts = KeFreezeExecution( );
-#if 0
+
         Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
         Head.MaximumLength = 0;
         Head.Buffer = ( PCHAR )&Change;
@@ -148,12 +150,11 @@ KdBreakTimerDpcCallback(
                              &Head,
                              NULL,
                              &ZeroContext );
-#endif
         //KeThawExecution( ( BOOLEAN )Interrupts );
     }
 
     //__writeeflags( __readeflags( ) | Interrupts );
-    KeLowerIrql( PreviousIrql );
+    //KeLowerIrql( PreviousIrql );
 
 }
 
@@ -378,14 +379,23 @@ KdDriverLoad(
     KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + *( LONG32* )( KeProcessorLevelAddress + 6 ) );
 
     DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
-
-    if ( !NT_SUCCESS( KdUart16550Initialize( &KdDebugDevice ) ) ) {
+#if 0
+    if ( !NT_SUCCESS( KdUartInitialize( &KdDebugDevice ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
     }
     else {
 
-        DbgPrint( "KdDebugDevice initialized to UART16550 #%d\n", KdDebugDevice.Uart.Index );
+        DbgPrint( "KdDebugDevice using UART port %d\n", KdDebugDevice.Uart.Index );
+    }
+#endif
+    if ( !NT_SUCCESS( KdVmwRpcInitialize( ) ) ) {
+
+        return STATUS_UNSUCCESSFUL;
+    }
+    else {
+
+        DbgPrint( "KdDebugDevice using VMWare ERPC channel %d\n", KdDebugDevice.VmwRpc.Channel );
     }
 
     //*KdpDebugRoutineSelect = 0;
@@ -417,13 +427,7 @@ KdDriverLoad(
     KdVersionBlock.PsLoadedModuleList = ( ULONG64 )PsLoadedModuleList;
     KdVersionBlock.KernBase = ( ULONG64 )ImageBase;
 
-    // TODO: Initialize KdpContext.
-
-    KIRQL x = KeRaiseIrqlToDpcLevel( );
-    KdPollBreakIn( );
-    KeLowerIrql( x );
-
-    DbgPrint( "Polled break in!\n" );
+    // TODO: Initialize KdContext.
 
     KeInitializeDpc( &KdBreakDpc,
         ( PKDEFERRED_ROUTINE )KdBreakTimerDpcCallback,
@@ -433,6 +437,55 @@ KdDriverLoad(
 
     DueTime.QuadPart = -10000000;
     //KeSetTimerEx( &KdBreakTimer, DueTime, 1000, &KdBreakDpc );
+
+    STRING                  Head;
+    DBGKD_WAIT_STATE_CHANGE Change = { 0 };
+    CONTEXT                 ZeroContext = { 0 };
+    SIZE_T                  InstructionCount;
+
+    //KeRaiseIrql( DISPATCH_LEVEL, &PreviousIrql );
+    //KeRaiseIrql( HIGH_LEVEL, &PreviousIrql );
+    //Interrupts = __readeflags( ) & 0x200;
+    //_disable( );
+
+    DbgPrint( "Kd Query!\n" );
+
+    if ( KdPollBreakIn( ) ) {
+
+        DbgPrint( "Broke in!\n" );
+
+        //Interrupts = KeFreezeExecution( );
+
+        Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
+        Head.MaximumLength = 0;
+        Head.Buffer = ( PCHAR )&Change;
+
+        Change.ApiNumber = 0x3030;
+        Change.CurrentThread = ( ULONG64 )KeGetCurrentThread( );
+        Change.Processor = ( USHORT )KeGetCurrentProcessorNumber( );
+        Change.ProgramCounter = ( ULONG64 )KdBreakTimerDpcCallback;
+        Change.ProcessorLevel = *KeProcessorLevel;
+        Change.u.Exception.FirstChance = FALSE;
+        Change.u.Exception.ExceptionRecord.ExceptionCode = 0x80000003;
+        Change.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdBreakTimerDpcCallback;
+        Change.ControlReport.SegCs = 0x10;
+        Change.ControlReport.ReportFlags = 3;
+
+        RtlZeroMemory( &Change.ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
+
+        MmCopyMemory( Change.ControlReport.InstructionStream,
+            ( PVOID )Change.ProgramCounter,
+                      0x10,
+                      MM_COPY_ADDRESS_VIRTUAL,
+                      &InstructionCount );
+        Change.ControlReport.InstructionCount = ( USHORT )InstructionCount;
+
+        KdpSendWaitContinue( 0,
+                             &Head,
+                             NULL,
+                             &ZeroContext );
+        //KeThawExecution( ( BOOLEAN )Interrupts );
+    }
 
     return STATUS_SUCCESS;
 }

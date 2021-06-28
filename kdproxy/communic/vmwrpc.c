@@ -2,6 +2,12 @@
 #include <kd.h>
 #include <vmwrpc.h>
 
+//
+// TODO: MUST CALL KdVmwRpcRecvCommandFinish AFTER A FUNCTION
+//       FAILURE, OTHERWISE NO NEW RPC DATA WILL BE DELIVERED
+//       TO THE RESPECTIVE CHANNEL.
+//
+
 NTSTATUS
 KdVmwRpcBufferedIoPrep(
     _In_ ULONG32 Length
@@ -35,16 +41,55 @@ typedef enum _KD_RPC_CMD {
 #define KD_RPC_RECV_RETURNED_ULONGS 5
 #define KD_RPC_SEND_PASSED_ULONGS   4
 
-#define KD_RPC_PROTOCOL_VERSION 0x101
+//
+// 0x101 is the VirtualKD version uploaded to github, but supporting
+// the redux version is a larger concern, so i've upped it to 2020.2 and 
+// start reading about their interface.
+//
 
-#define KD_RPC_TEST_BUFFER_SIZE 512
+// 2020 << 16 | 2 => 2020.2
+#define KD_RPC_PROTOCOL_VERSION     0x07E40002
+
+
+#define KD_RPC_TEST_BUFFER_SIZE     512
+
+//
+// Sob, fuck you.
+//
+//C_ASSERT( FIELD_OFFSET( STRING, Buffer ) == 4 );
+
+#pragma pack( push, 2 )
+
+typedef struct _STRING_HEAD {
+    USHORT Length;
+    USHORT MaximumLength;
+} STRING_HEAD, *PSTRING_HEAD;
+
+C_ASSERT( sizeof( STRING_HEAD ) == 4 );
+
+#pragma pack( pop )
+//C_ASSERT( sizeof( STRING_HEAD ) == FIELD_OFFSET( STRING, Buffer ) );
 
 NTSTATUS
 KdVmwRpcInitialize(
-    _In_ PKD_DEBUG_DEVICE DebugDevice
+
 )
 {
-    return KdVmwRpcOpenChannel( &DebugDevice->VmwRpc );
+    NTSTATUS ntStatus;
+
+    ntStatus = KdVmwRpcOpenChannel( &KdDebugDevice.VmwRpc );
+
+    if ( !NT_SUCCESS( ntStatus ) ) {
+
+        return ntStatus;
+    }
+
+    DbgPrint( "KdDebugDevice.VmwRpc.Channel set! %d\n", KdDebugDevice.VmwRpc.Channel );
+
+    KdDebugDevice.KdSendPacket = KdVmwRpcSendPacket;
+    KdDebugDevice.KdReceivePacket = KdVmwRpcRecvPacket;
+
+    return NT_SUCCESS( KdVmwRpcInitProtocol( ) ) ? KdVmwRpcTestConnection( ) : STATUS_UNSUCCESSFUL;
 }
 
 NTSTATUS
@@ -56,10 +101,11 @@ KdVmwRpcInitProtocol(
     // Negotiate a protocol version,
     // 
 
-    CHAR    CommandType;
-    ULONG32 Version;
-    ULONG32 RecvLength;
-    CHAR    Sig[ sizeof( KdRpcCmdRecp ) ];
+    NTSTATUS ntStatus;
+    CHAR     CommandType;
+    ULONG32  Version;
+    ULONG32  RecvLength;
+    CHAR     Sig[ sizeof( KdRpcCmdRecp ) ];
 
     CommandType = KdRpcGetVersion;
     Version = KD_RPC_PROTOCOL_VERSION;
@@ -69,9 +115,16 @@ KdVmwRpcInitProtocol(
     KdVmwRpcBufferedIoSend( &KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
     KdVmwRpcBufferedIoSend( &CommandType, 1 );
     KdVmwRpcBufferedIoSend( &Version, sizeof( ULONG32 ) );
+    ntStatus = KdVmwRpcBufferedIoDone( );
+
+    if ( !NT_SUCCESS( ntStatus ) ) {
+
+        DbgPrint( "KdVmwRpcInitProtocol failed on KdVmwRpcBufferedIoDone.\n" );
+        return ntStatus;
+    }
 
     KdVmwRpcRecvCommandLength( &KdDebugDevice.VmwRpc, &RecvLength );
-    if ( RecvLength != sizeof( ULONG32 ) + sizeof( KdRpcCmdHead ) - 1 + 2 ) {
+    if ( RecvLength < sizeof( ULONG32 ) + sizeof( KdRpcCmdRecp ) - 1 + 2 ) {
 
         return STATUS_CONNECTION_REFUSED;
     }
@@ -81,6 +134,7 @@ KdVmwRpcInitProtocol(
     if ( Sig[ 0 ] != '1' ||
          Sig[ 1 ] != ' ' ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return STATUS_CONNECTION_REFUSED;
     }
 
@@ -88,6 +142,7 @@ KdVmwRpcInitProtocol(
 
     if ( memcmp( Sig, KdRpcCmdRecp, sizeof( KdRpcCmdRecp ) - 1 ) != 0 ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return STATUS_CONNECTION_REFUSED;
     }
 
@@ -95,8 +150,15 @@ KdVmwRpcInitProtocol(
 
     if ( Version != KD_RPC_PROTOCOL_VERSION ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return STATUS_PROTOCOL_NOT_SUPPORTED;
     }
+
+    KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
+
+    DbgPrint( "KdVmwRpcInitProtocol version negotiation successful, %d.%d\n",
+              KD_RPC_PROTOCOL_VERSION >> 16,
+              KD_RPC_PROTOCOL_VERSION & 0xFFFF );
 
     return STATUS_SUCCESS;
 }
@@ -106,10 +168,11 @@ KdVmwRpcTestConnection(
 
 )
 {
-    CHAR    CommandType;
-    UCHAR   Buffer[ KD_RPC_TEST_BUFFER_SIZE ];
-    ULONG32 CurrentChar;
-    ULONG32 RecvLength;
+    NTSTATUS ntStatus;
+    CHAR     CommandType;
+    UCHAR    Buffer[ KD_RPC_TEST_BUFFER_SIZE ];
+    ULONG32  CurrentChar;
+    ULONG32  RecvLength;
 
     CommandType = KdRpcTestConnection;
 
@@ -117,7 +180,7 @@ KdVmwRpcTestConnection(
           CurrentChar < KD_RPC_TEST_BUFFER_SIZE;
           CurrentChar++ ) {
 
-        Buffer[ CurrentChar ] = CurrentChar;
+        Buffer[ CurrentChar ] = ( UCHAR )CurrentChar;
     }
 
     KdVmwRpcBufferedIoPrep( KD_RPC_TEST_BUFFER_SIZE + sizeof( KdRpcCmdHead ) );
@@ -125,10 +188,16 @@ KdVmwRpcTestConnection(
     KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
     KdVmwRpcBufferedIoSend( &CommandType, 1 );
     KdVmwRpcBufferedIoSend( Buffer, KD_RPC_TEST_BUFFER_SIZE );
+    ntStatus = KdVmwRpcBufferedIoDone( );
+
+    if ( !NT_SUCCESS( ntStatus ) ) {
+
+        DbgPrint( "KdVmwRpcTestConnection failed on KdVmwRpcBufferedIoDone.\n" );
+        return ntStatus;
+    }
 
     KdVmwRpcRecvCommandLength( &KdDebugDevice.VmwRpc, &RecvLength );
-
-    if ( RecvLength !=
+    if ( RecvLength <
          sizeof( KdRpcCmdRecp ) +
          KD_RPC_TEST_BUFFER_SIZE +
          2 - 1 ) {
@@ -138,14 +207,17 @@ KdVmwRpcTestConnection(
 
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc, sizeof( KdRpcCmdRecp ) - 1 + 2, Buffer );
 
-    if ( Buffer[ 0 ] != '1' ) {
-        // virtualkd doesn't compare the expected space?
+    if ( Buffer[ 0 ] != '1' &&
+         Buffer[ 1 ] != ' ' ) {
+        // virtualkd doesn't compare the expected space here, in their implementation
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return STATUS_CONNECTION_REFUSED;
     }
 
     if ( memcmp( Buffer + 2, KdRpcCmdRecp, sizeof( KdRpcCmdRecp ) - 1 ) != 0 ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return STATUS_CONNECTION_REFUSED;
     }
 
@@ -158,27 +230,11 @@ KdVmwRpcTestConnection(
 
         if ( Buffer[ CurrentChar ] != ( UCHAR )( CurrentChar ^ 0x55 ) ) {
 
-            return STATUS_CONNECTION_REFUSED;
+            return STATUS_CONNECTION_ABORTED;
         }
     }
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS
-KdVmwRpcDebuggerInitialize0(
-
-)
-{
-    //
-    // The real version of this function has the LOADER_PARAMETER_BLOCK/KeLoaderBlock 
-    // passed to it, however this is not useful to us, and destroyed after initialization
-    // of the kernel. Although it is also located on some Kd internal structure we have.
-    //
-
-    KdVmwRpcInitProtocol( );
-
-
 }
 
 KD_STATUS
@@ -189,6 +245,12 @@ KdVmwRpcSendPacket(
     _Inout_  PKD_CONTEXT    KdContext
 )
 {
+    KdContext;
+
+    //
+    // TODO: Fixup the KdContext issues, the global structure has been amended
+    //      and should be used with this.
+    //
 
 #pragma pack(push, 2)
     struct _KD_CONTEXT_DUP {
@@ -197,15 +259,15 @@ KdVmwRpcSendPacket(
     } KdContextDup = { 0 };
 #pragma pack(pop)
 
-    CHAR    CommandType;
-    ULONG32 HeadLength;
-    ULONG32 BodyLength;
-    ULONG32 LocalState;
-    CHAR    Sig[ sizeof( KdRpcCmdHead ) ];
-    ULONG32 ULongSend[ KD_RPC_SEND_PASSED_ULONGS ];
-    STRING  Buffer = { 0 };
-    ULONG32 RecvLength;
-    ULONG32 RecvLengthMinimum;
+    NTSTATUS ntStatus;
+    CHAR     CommandType;
+    ULONG32  HeadLength;
+    ULONG32  BodyLength;
+    ULONG32  LocalState;
+    CHAR     Sig[ sizeof( KdRpcCmdRecp ) ];
+    ULONG32  ULongSend[ KD_RPC_SEND_PASSED_ULONGS ];
+    STRING   Buffer = { 0 };
+    ULONG32  RecvLength;
 
     HeadLength = Head != NULL ? Head->Length : 0;
     BodyLength = Body != NULL ? Body->Length : 0;
@@ -227,13 +289,13 @@ KdVmwRpcSendPacket(
 
         KdVmwRpcBufferedIoPrep( sizeof( KdRpcCmdHead ) +
                                 sizeof( ULONG32 ) * KD_RPC_SEND_PASSED_ULONGS +
-                                2 * FIELD_OFFSET( STRING, Buffer ),
+                                2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
                                 sizeof( struct _KD_CONTEXT_DUP ) +
                                 HeadLength + BodyLength );
         KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
         KdVmwRpcBufferedIoSend( &CommandType, 1 );
-        KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, FIELD_OFFSET( STRING, Buffer ) );
-        KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, FIELD_OFFSET( STRING, Buffer ) );
+        KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
+        KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
         KdVmwRpcBufferedIoSend( &KdContextDup, sizeof( struct _KD_CONTEXT_DUP ) );
         KdVmwRpcBufferedIoSend( ULongSend, sizeof( ULONG32 ) * KD_RPC_SEND_PASSED_ULONGS );
 
@@ -247,13 +309,22 @@ KdVmwRpcSendPacket(
             KdVmwRpcBufferedIoSend( Body->Buffer, BodyLength );
         }
 
+        ntStatus = KdVmwRpcBufferedIoDone( );
+
+        if ( !NT_SUCCESS( ntStatus ) ) {
+
+            DbgPrint( "KdVmwRpcSendPacket failed on KdVmwRpcBufferedIoDone.\n" );
+            return KdStatusError;
+        }
+
         KdVmwRpcRecvCommandLength( &KdDebugDevice.VmwRpc, &RecvLength );
 
-        if ( RecvLength !=
+        if ( RecvLength <
              sizeof( KdRpcCmdRecp ) +
              2 + sizeof( struct _KD_CONTEXT_DUP ) +
              sizeof( ULONG ) ) {
 
+            KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
             return KdStatusError;
         }
 
@@ -262,6 +333,7 @@ KdVmwRpcSendPacket(
         if ( Sig[ 0 ] != '1' ||
              Sig[ 1 ] != ' ' ) {
 
+            KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
             return KdStatusError;
         }
 
@@ -271,6 +343,7 @@ KdVmwRpcSendPacket(
         if ( memcmp( Sig, KdRpcCmdRecp, sizeof( KdRpcCmdRecp ) - 1 ) != 0 ||
              CommandType != KdRpcSendPacket ) {
 
+            KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
             return KdStatusError;
         }
 
@@ -305,6 +378,12 @@ KdVmwRpcRecvPacket(
     _Inout_ PKD_CONTEXT    KdContext
 )
 {
+    KdContext;
+
+    //
+    // TODO: Same as said in KdVmwRpcSendPacket's comment.
+    //
+
     //
     // Having individual handlers for packet recv & send apis
     // is because of VirtualKD, this implements a different
@@ -321,13 +400,14 @@ KdVmwRpcRecvPacket(
     } KdContextDup = { 0 };
 #pragma pack(pop)
 
-    CHAR    CommandType;
-    ULONG32 LocalState;
-    ULONG32 RecvLength;
-    ULONG32 RecvLengthMinimum;
-    STRING  Buffer = { 0 };
-    CHAR    Sig[ sizeof( KdRpcCmdRecp ) ];
-    ULONG32 ULongRecv[ KD_RPC_RECV_RETURNED_ULONGS ];
+    NTSTATUS ntStatus;
+    CHAR     CommandType;
+    ULONG32  LocalState;
+    ULONG32  RecvLength;
+    ULONG32  RecvLengthMinimum;
+    STRING   Buffer = { 0 };
+    CHAR     Sig[ sizeof( KdRpcCmdRecp ) ];
+    ULONG32  ULongRecv[ KD_RPC_RECV_RETURNED_ULONGS ];
 
     CommandType = KdRpcRecvPacket;
 
@@ -338,27 +418,35 @@ KdVmwRpcRecvPacket(
     }
 
     KdVmwRpcBufferedIoPrep( sizeof( KdRpcCmdHead ) +
-                            2 * FIELD_OFFSET( STRING, Buffer ) +
+                            2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
                             2 * sizeof( ULONG32 ) +
                             sizeof( struct _KD_CONTEXT_DUP ) );
-    KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) );
-    KdVmwRpcBufferedIoSend( &CommandType, sizeof( CHAR ) );
+    KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
+    KdVmwRpcBufferedIoSend( &CommandType, 1 );
     KdVmwRpcBufferedIoSend( &PacketType, sizeof( ULONG32 ) );
     KdVmwRpcBufferedIoSend( &LocalState, sizeof( ULONG32 ) );
-    KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, FIELD_OFFSET( STRING, Buffer ) );
-    KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, FIELD_OFFSET( STRING, Buffer ) );
+    KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
+    KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
     KdVmwRpcBufferedIoSend( &KdContextDup, sizeof( struct _KD_CONTEXT_DUP ) );
+    ntStatus = KdVmwRpcBufferedIoDone( );
+
+    if ( !NT_SUCCESS( ntStatus ) ) {
+
+        DbgPrint( "KdVmwRpcRecvPacket failed on KdVmwRpcBufferedIoDone.\n" );
+        return ntStatus;
+    }
 
     KdVmwRpcRecvCommandLength( &KdDebugDevice.VmwRpc, &RecvLength );
 
     RecvLengthMinimum = sizeof( KdRpcCmdRecp ) +
-        2 * FIELD_OFFSET( STRING, Buffer ) +
+        2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
         sizeof( struct _KD_CONTEXT_DUP ) +
         sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS +
         2;
 
-    if ( RecvLength == -1 || RecvLength < RecvLengthMinimum ) {
+    if ( RecvLength < RecvLengthMinimum ) {
 
+        DbgPrint( "KdVmwRpcRecvPacket failed, has: %d, min: %d\n", RecvLength, RecvLengthMinimum );
         return KdStatusError;
     }
 
@@ -367,6 +455,8 @@ KdVmwRpcRecvPacket(
     if ( Sig[ 0 ] != '1' &&
          Sig[ 1 ] != ' ' ) {
 
+        DbgPrint( "KdVmwRpcRecvPacket failed, no sig\n", RecvLength, RecvLengthMinimum );
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return KdStatusError;
     }
 
@@ -374,32 +464,40 @@ KdVmwRpcRecvPacket(
                                sizeof( KdRpcCmdRecp ) - 1,
                                Sig );
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
-                               &CommandType,
-                               1 );
+                               1,
+                               &CommandType );
     if ( memcmp( Sig, KdRpcCmdRecp, sizeof( KdRpcCmdRecp ) - 1 ) != 0 ||
          CommandType != KdRpcRecvPacket ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return KdStatusError;
     }
 
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
-                               FIELD_OFFSET( STRING, Buffer ),
+                               sizeof( STRING_HEAD ),//FIELD_OFFSET( STRING, Buffer ),
                                Head == NULL ? &Buffer : Head );
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
-                               FIELD_OFFSET( STRING, Buffer ),
+                               sizeof( STRING_HEAD ),//FIELD_OFFSET( STRING, Buffer ),
                                Body == NULL ? &Buffer : Body );
 
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
                                sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS,
                                ULongRecv );
+    //
+    // TODO: Range check on ULongRecv[2, 3] against KdTransportMaxPacketSize.
+    //
+    // TODO: Potentially adjust all RecvLength checks. (<, !=)
+    //
+
     if ( RecvLength !=
          sizeof( KdRpcCmdRecp ) +
          ULongRecv[ 2 ] +
          ULongRecv[ 3 ] +
-         2 * FIELD_OFFSET( STRING, Buffer ) +
+         2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
          sizeof( struct _KD_CONTEXT_DUP ) +
          sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS + 2 ) {
 
+        KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return KdStatusError;
     }
 
@@ -417,7 +515,10 @@ KdVmwRpcRecvPacket(
                                    Body->Buffer );
     }
 
-    *Length = ULongRecv[ 1 ];
+    if ( Length != NULL ) {
+
+        *Length = ULongRecv[ 1 ];
+    }
 
     LocalState = ULongRecv[ 4 ];
 
@@ -474,6 +575,12 @@ KdVmwRpcBufferedIoSend(
                    Length );
     KdpVmwRpcBufferedIoIndex += Length;
 
+    if ( KdpVmwRpcBufferedIoIndex >= KdpVmwRpcBufferedIoLength ) {
+
+        //DbgPrint( "KdVmwRpcBufferedIoDone privately called.\n" );
+        //KdVmwRpcBufferedIoDone( );
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -490,77 +597,4 @@ KdVmwRpcBufferedIoDone(
                                KdpVmwRpcBufferedIoBuffer );
 
     return STATUS_SUCCESS;
-}
-
-KD_STATUS
-KdVmwRpcRecvString(
-    _In_ PKD_DEBUG_DEVICE DebugDevice,
-    _In_ PVOID            String,
-    _In_ ULONG            Length
-)
-{
-    PVOID   ExtraBuffer;
-    ULONG32 ExtraLength;
-
-    ExtraBuffer = DebugDevice->VmwRpc.RecvExtraBuffer;
-    ExtraLength = DebugDevice->VmwRpc.RecvExtraLength;
-
-    //
-    // This buffer should first copy ALL data from the RPC channel, into 
-    // the ExtraBuffer, then be operated on from there. This also makes sure
-    // that timeouts work properly if ExtraLength is too small. In the 
-    // UART 16550 implementation, we discard any excess/overflow which doesn't
-    // match the proper size demanded by it's KdSendString Length parameter.
-    //
-
-    if ( ExtraLength > 0 ) {
-
-        if ( ExtraLength >= Length ) {
-
-            RtlCopyMemory( String,
-                           ExtraBuffer,
-                           Length );
-            ExtraLength -= Length;
-
-            DebugDevice->VmwRpc.RecvExtraLength = ExtraLength;
-
-            return KdStatusSuccess;
-        }
-
-        RtlCopyMemory( String,
-                       ExtraBuffer,
-                       ExtraLength );
-
-        DebugDevice->VmwRpc.RecvExtraLength = 0;
-        String = ( PUCHAR )String + ExtraLength;
-    }
-
-    KdVmwRpcRecvCommandLength( &DebugDevice->VmwRpc,
-                               &ExtraLength );
-
-
-    return KdStatusSuccess;
-}
-
-KD_STATUS
-KdVmwRpcSendString(
-    _In_ PKD_DEBUG_DEVICE DebugDevice,
-    _In_ PVOID            String,
-    _In_ ULONG            Length
-)
-{
-    NTSTATUS ntStatus;
-
-    ntStatus = KdVmwRpcSendCommandLength( &DebugDevice->VmwRpc,
-                                          Length );
-    if ( !NT_SUCCESS( ntStatus ) ) {
-
-        return KdStatusError;
-    }
-
-    ntStatus = KdVmwRpcSendCommandBuffer( &DebugDevice->VmwRpc,
-                                          Length,
-                                          String );
-
-    return NT_SUCCESS( ntStatus ) ? KdStatusSuccess : KdStatusError;
 }

@@ -154,10 +154,10 @@ KdVmwRpcSendCommandBuffer PROC FRAME
     xchg    rcx, rdx
     mov     ebx, 10000h
     mov     rsi, r8
-    mov     edx, dword ptr [rcx+KD_VMWRPC_CONTROL.Channel]
+    mov     ebp, dword ptr [rdx+KD_VMWRPC_CONTROL.Cookie1]
+    mov     edi, dword ptr [rdx+KD_VMWRPC_CONTROL.Cookie2]
+    mov     edx, dword ptr [rdx+KD_VMWRPC_CONTROL.Channel]
     or      edx, VMWARE_IO_PORT + 1
-    mov     ebp, dword ptr [rcx+KD_VMWRPC_CONTROL.Cookie1]
-    mov     edi, dword ptr [rcx+KD_VMWRPC_CONTROL.Cookie2]
     cld
     rep     outsb
     xor     eax, eax
@@ -244,9 +244,15 @@ KdVmwRpcRecvCommandLength PROC FRAME
     mov     dword ptr [r8+KD_VMWRPC_CONTROL.RecvId], edx
     mov     dword ptr [r9], ebx
     xor     eax, eax
-    cmp     ecx, 830000h
-    je      @KdpVmwRpcRetn
-    mov     eax, STATUS_UNSUCCESSFUL
+    ;
+    ; ecx is different on my vmware version 
+    ; or something, this value no longer indicates
+    ; success and has been causing issues.
+    ; assume success.
+    ;
+    ;cmp     ecx, 830000h
+    ;je      @KdpVmwRpcRetn
+    ;mov     eax, STATUS_UNSUCCESSFUL
 @KdpVmwRpcRetn:
     pop     rdi
     pop     rsi

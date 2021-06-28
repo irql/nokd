@@ -182,29 +182,6 @@ KdSearchSignature(
     _In_ PCHAR Signature
 );
 
-KD_STATUS
-KdUart16550SendControlPacket(
-    _In_ ULONG32 PacketType,
-    _In_ ULONG32 PacketId
-);
-
-KD_STATUS
-KdSendPacket(
-    _In_ ULONG32     PacketType,
-    _In_ PSTRING     MessageHeader,
-    _In_ PSTRING     MessageData,
-    _In_ PKD_CONTEXT Context
-);
-
-KD_STATUS
-KdReceivePacket(
-    _In_  ULONG32     PacketType,
-    _Out_ PSTRING     Head,
-    _Out_ PSTRING     Body,
-    _Out_ PULONG32    Length,
-    _In_  PKD_CONTEXT Context
-);
-
 BOOLEAN
 KdPollBreakIn(
 
