@@ -41,18 +41,39 @@ KdpReadVirtualMemory(
     ReadCount = Packet->u.ReadMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
     ReadCount = min( Body->MaximumLength, ReadCount );
-
+#if 0
     Packet->ReturnStatus = MmCopyMemory( Body->Buffer,
         ( PVOID )Packet->u.ReadMemory.TargetBaseAddress,
                                          ReadCount,
                                          MM_COPY_ADDRESS_VIRTUAL,
                                          &ReadCount );
-    Body->Length = ( USHORT )ReadCount;
-    Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+#endif
+    Packet->ReturnStatus = STATUS_SUCCESS;
+    __try {
+        memcpy( Body->Buffer,
+            ( void* )Packet->u.ReadMemory.TargetBaseAddress,
+                ReadCount );
+        Body->Length = ( USHORT )ReadCount;
+        Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+    }
+    __except ( EXCEPTION_EXECUTE_HANDLER ) {
+
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        Body->Length = 0;
+        Packet->u.ReadMemory.ActualBytesRead = 0;
+    }
+
+
 
     Reciprocate.MaximumLength = 0;
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
+#if 1
+    DbgPrint( "KdpReadVirtualMemory: %p %d %lx\n",
+              Packet->u.ReadMemory.TargetBaseAddress,
+              ReadCount,
+              Packet->ReturnStatus );
+#endif
 
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,
@@ -76,7 +97,7 @@ KdpWriteVirtualMemory(
                                          &Length );
     Packet->u.WriteMemory.TransferCount = ( unsigned int )Length;
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -87,22 +108,80 @@ KdpWriteVirtualMemory(
 }
 
 KD_STATUS
-KdpGetContext(
+KdpGetContextApi(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
 )
 {
+    STRING Reciprocate;
 
-    //
-    // Currently unimplemented, I think this function is 
-    // dependant on some PCRB shit, alongside the 
-    // Freeze/Thaw apis. This means we may need to sig it.
-    //
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Buffer = ( PCHAR )Packet;
 
-    Packet;
-    Body;
+    KdpGetContext( Packet,
+                   Body,
+                   Context );
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
+}
 
-    return KdStatusSuccess;
+KD_STATUS
+KdpGetContextEx(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+)
+{
+    STRING  Reciprocate;
+    ULONG64 BodyLength;
+    ULONG64 BodyOffset;
+
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Buffer = ( PCHAR )Packet;
+
+    KdpGetContext( Packet,
+                   Body,
+                   Context );
+
+    Packet->u.GetContextEx.BytesCopied = 0;
+
+    if ( NT_SUCCESS( Packet->ReturnStatus ) ) {
+
+        BodyOffset = Body->Length;
+
+        if ( Packet->u.GetContextEx.Offset < BodyOffset ) {
+
+            BodyOffset = Packet->u.GetContextEx.Offset;
+        }
+
+        BodyLength = Body->Length - BodyOffset;
+        if ( Packet->u.GetContextEx.ByteCount <= BodyLength ) {
+
+            BodyLength = Packet->u.GetContextEx.ByteCount;
+        }
+
+        if ( BodyOffset != 0 && BodyLength != 0 ) {
+
+            RtlMoveMemory( Body->Buffer,
+                           Body->Buffer + BodyOffset,
+                           BodyLength );
+        }
+
+        Packet->u.GetContextEx.Offset = ( unsigned int )BodyOffset;
+        Packet->u.GetContextEx.ByteCount = Body->Length;
+        Packet->u.GetContextEx.BytesCopied = ( unsigned int )BodyLength;
+        Body->Length = ( USHORT )BodyLength;
+    }
+
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       Body,
+                                       &KdpContext );
 }
 
 KD_STATUS
@@ -122,8 +201,40 @@ KdpSetContext(
     return KdStatusSuccess;
 }
 
-static ULONG BreakpointCodeLength = 1;
-static UCHAR BreakpointCode[ ] = { 0xCC };
+KD_STATUS
+KdpGetStateChangeApi(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+)
+{
+    Packet;
+    Body;
+    Context;
+    return KdStatusSuccess;
+}
+
+//
+// The current implementation for breakpoints is to 
+// write some shellcode that will jump to some more shellcode,
+// this shellcode will save the state of all registers and then
+// send an exception
+//
+//
+//
+
+//
+// The aim is to just have shellcode under 15 bytes
+//
+// ff 25 00 00 00 00        jmp  qword ptr [rip]
+// xx xx xx xx xx xx xx xx  dq   shellcode_address
+//
+
+static ULONG BreakpointCodeLength = 6 + 8;
+static UCHAR BreakpointCode[ ] = {
+    0xff, 0x25, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 KD_STATUS
 KdpAddBreakpoint(
@@ -213,11 +324,13 @@ KdpDeleteBreakpoint(
     SIZE_T     Length;
     KAPC_STATE ApcState;
 
+    // TODO: Needs range check.
+
     BreakpointHandle = Packet->u.RestoreBreakPoint.BreakPointHandle;
 
     if ( ( KdpBreakpointTable[ BreakpointHandle ].Flags & KD_BPE_SET ) == 0 ) {
 
-        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        Packet->ReturnStatus = STATUS_SUCCESS;//STATUS_UNSUCCESSFUL;
         goto KdpProcedureDone;
     }
 
@@ -443,6 +556,10 @@ KdpReadPhysicalMemory(
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
+    if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
+        DbgPrint( "failed to read physical memory: %p\n", Packet->u.ReadMemory.TargetBaseAddress );
+    }
+
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,
                                        Body,
@@ -500,9 +617,6 @@ KdpProcedureDone:
 
 }
 
-//
-//
-
 KD_STATUS
 KdpGetVersion(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
@@ -519,6 +633,47 @@ KdpGetVersion(
     Reciprocate.MaximumLength = 0;
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
+
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
+}
+
+KD_STATUS
+KdpQueryMemory(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body
+)
+{
+    Body;
+
+    STRING Reciprocate;
+
+    if ( Packet->u.QueryMemory.AddressSpace != 0 ) {
+
+        Packet->ReturnStatus = STATUS_INVALID_PARAMETER;
+    }
+    else {
+
+        //
+        // 0 - UserSpace
+        // 1 - SessionSpace
+        // 2 - SystemSpace
+        //
+
+        if ( Packet->u.QueryMemory.Address >= 0x7FFFFFFEFFFF ) {
+
+            Packet->u.QueryMemory.AddressSpace = 2 - ( MmIsSessionAddress( Packet->u.QueryMemory.Address ) != 0 );
+        }
+
+        Packet->u.QueryMemory.Flags = 7;
+        Packet->ReturnStatus = STATUS_SUCCESS;
+    }
+
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Buffer = ( PCHAR )&Packet;
 
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,

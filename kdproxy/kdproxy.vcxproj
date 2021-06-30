@@ -154,11 +154,9 @@
   <ItemGroup>
     <ClCompile Include="communic\communic.c" />
     <ClCompile Include="init.c" />
-    <ClCompile Include="kdapi.c" />
-    <ClCompile Include="mmdbg.c" />
+    <ClCompile Include="kdimpl\kdapi.c" />
     <ClCompile Include="nt.c" />
-    <ClCompile Include="prcb.c" />
-    <ClCompile Include="swc.c" />
+    <ClCompile Include="kdimpl\swc.c" />
     <ClCompile Include="communic\uart.c" />
     <ClCompile Include="communic\vmwrpc.c" />
   </ItemGroup>
@@ -172,6 +170,7 @@
   </ItemGroup>
   <ItemGroup>
     <MASM Include="communic\vmwrpc64.asm" />
+    <MASM Include="kdimpl\bp.asm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -3,13 +3,11 @@
   <ItemGroup>
     <ClCompile Include="init.c" />
     <ClCompile Include="nt.c" />
-    <ClCompile Include="prcb.c" />
-    <ClCompile Include="swc.c" />
-    <ClCompile Include="kdapi.c" />
-    <ClCompile Include="mmdbg.c" />
     <ClCompile Include="communic\vmwrpc.c" />
     <ClCompile Include="communic\communic.c" />
     <ClCompile Include="communic\uart.c" />
+    <ClCompile Include="kdimpl\kdapi.c" />
+    <ClCompile Include="kdimpl\swc.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\kd.h" />
@@ -21,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <MASM Include="communic\vmwrpc64.asm" />
+    <MASM Include="kdimpl\bp.asm" />
   </ItemGroup>
 </Project>

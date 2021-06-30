@@ -65,6 +65,8 @@ typedef struct _STRING_HEAD {
     USHORT MaximumLength;
 } STRING_HEAD, *PSTRING_HEAD;
 
+C_ASSERT( FIELD_OFFSET( STRING, MaximumLength ) ==
+          FIELD_OFFSET( STRING_HEAD, MaximumLength ) );
 C_ASSERT( sizeof( STRING_HEAD ) == 4 );
 
 #pragma pack( pop )
@@ -247,17 +249,7 @@ KdVmwRpcSendPacket(
 {
     KdContext;
 
-    //
-    // TODO: Fixup the KdContext issues, the global structure has been amended
-    //      and should be used with this.
-    //
-
-#pragma pack(push, 2)
-    struct _KD_CONTEXT_DUP {
-        ULONG32 RetryCount;
-        BOOLEAN BreakRequested;
-    } KdContextDup = { 0 };
-#pragma pack(pop)
+    KD_CONTEXT KdContextDup = { 0 };
 
     NTSTATUS ntStatus;
     CHAR     CommandType;
@@ -290,13 +282,13 @@ KdVmwRpcSendPacket(
         KdVmwRpcBufferedIoPrep( sizeof( KdRpcCmdHead ) +
                                 sizeof( ULONG32 ) * KD_RPC_SEND_PASSED_ULONGS +
                                 2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
-                                sizeof( struct _KD_CONTEXT_DUP ) +
+                                sizeof( KD_CONTEXT ) +
                                 HeadLength + BodyLength );
         KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
         KdVmwRpcBufferedIoSend( &CommandType, 1 );
         KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
         KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
-        KdVmwRpcBufferedIoSend( &KdContextDup, sizeof( struct _KD_CONTEXT_DUP ) );
+        KdVmwRpcBufferedIoSend( KdContext == NULL ? &KdContextDup : KdContext, sizeof( KD_CONTEXT ) );
         KdVmwRpcBufferedIoSend( ULongSend, sizeof( ULONG32 ) * KD_RPC_SEND_PASSED_ULONGS );
 
         if ( HeadLength != 0 ) {
@@ -321,8 +313,10 @@ KdVmwRpcSendPacket(
 
         if ( RecvLength <
              sizeof( KdRpcCmdRecp ) +
-             2 + sizeof( struct _KD_CONTEXT_DUP ) +
+             2 + sizeof( KD_CONTEXT ) +
              sizeof( ULONG ) ) {
+
+            DbgPrint( "KdVmwRpcSendPacket invalid reply size: %d\n", RecvLength );
 
             KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
             return KdStatusError;
@@ -347,7 +341,9 @@ KdVmwRpcSendPacket(
             return KdStatusError;
         }
 
-        KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc, sizeof( struct _KD_CONTEXT_DUP ), &KdContextDup );
+        KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
+                                   sizeof( KD_CONTEXT ),
+                                   KdContext == NULL ? &KdContextDup : KdContext );
 
         KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc, sizeof( ULONG32 ), &LocalState );
         KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
@@ -381,7 +377,8 @@ KdVmwRpcRecvPacket(
     KdContext;
 
     //
-    // TODO: Same as said in KdVmwRpcSendPacket's comment.
+    //! DO NOT RELY ON THE LENGTH PARAMETER
+    //! USE (Head/Body)->Length INSTEAD!
     //
 
     //
@@ -393,12 +390,7 @@ KdVmwRpcRecvPacket(
 
     C_ASSERT( sizeof( KD_PACKET_TYPE ) == sizeof( ULONG32 ) );
 
-#pragma pack(push, 2)
-    struct _KD_CONTEXT_DUP {
-        ULONG32 RetryCount;
-        BOOLEAN BreakRequested;
-    } KdContextDup = { 0 };
-#pragma pack(pop)
+    KD_CONTEXT KdContextDup = { 0 };
 
     NTSTATUS ntStatus;
     CHAR     CommandType;
@@ -420,14 +412,14 @@ KdVmwRpcRecvPacket(
     KdVmwRpcBufferedIoPrep( sizeof( KdRpcCmdHead ) +
                             2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
                             2 * sizeof( ULONG32 ) +
-                            sizeof( struct _KD_CONTEXT_DUP ) );
+                            sizeof( KD_CONTEXT ) );
     KdVmwRpcBufferedIoSend( KdRpcCmdHead, sizeof( KdRpcCmdHead ) - 1 );
     KdVmwRpcBufferedIoSend( &CommandType, 1 );
     KdVmwRpcBufferedIoSend( &PacketType, sizeof( ULONG32 ) );
     KdVmwRpcBufferedIoSend( &LocalState, sizeof( ULONG32 ) );
     KdVmwRpcBufferedIoSend( Head == NULL ? &Buffer : Head, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
     KdVmwRpcBufferedIoSend( Body == NULL ? &Buffer : Body, sizeof( STRING_HEAD ) );//FIELD_OFFSET( STRING, Buffer ) );
-    KdVmwRpcBufferedIoSend( &KdContextDup, sizeof( struct _KD_CONTEXT_DUP ) );
+    KdVmwRpcBufferedIoSend( KdContext == NULL ? &KdContextDup : KdContext, sizeof( KD_CONTEXT ) );
     ntStatus = KdVmwRpcBufferedIoDone( );
 
     if ( !NT_SUCCESS( ntStatus ) ) {
@@ -440,7 +432,7 @@ KdVmwRpcRecvPacket(
 
     RecvLengthMinimum = sizeof( KdRpcCmdRecp ) +
         2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
-        sizeof( struct _KD_CONTEXT_DUP ) +
+        sizeof( KD_CONTEXT ) +
         sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS +
         2;
 
@@ -455,7 +447,7 @@ KdVmwRpcRecvPacket(
     if ( Sig[ 0 ] != '1' &&
          Sig[ 1 ] != ' ' ) {
 
-        DbgPrint( "KdVmwRpcRecvPacket failed, no sig\n", RecvLength, RecvLengthMinimum );
+        DbgPrint( "KdVmwRpcRecvPacket failed, no sig %d\n", RecvLength );
         KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return KdStatusError;
     }
@@ -469,6 +461,7 @@ KdVmwRpcRecvPacket(
     if ( memcmp( Sig, KdRpcCmdRecp, sizeof( KdRpcCmdRecp ) - 1 ) != 0 ||
          CommandType != KdRpcRecvPacket ) {
 
+        DbgPrint( "KdVmwRpcRecvPacket failed, bad recp sig\n" );
         KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
         return KdStatusError;
     }
@@ -481,39 +474,78 @@ KdVmwRpcRecvPacket(
                                Body == NULL ? &Buffer : Body );
 
     KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
+                               sizeof( KD_CONTEXT ),
+                               KdContext == NULL ? &KdContextDup : KdContext );
+
+    KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
                                sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS,
                                ULongRecv );
+
+    if ( Head != NULL ) {
+
+        //DbgPrint( "Head->Length: %d => %d\n", Head->Length, ULongRecv[ 2 ] );
+    }
+
+    if ( Body != NULL ) {
+
+        //DbgPrint( "Body->Length: %d => %d\n", Body->Length, ULongRecv[ 3 ] );
+    }
+
     //
     // TODO: Range check on ULongRecv[2, 3] against KdTransportMaxPacketSize.
     //
     // TODO: Potentially adjust all RecvLength checks. (<, !=)
     //
 
+    //DbgPrint( "ULongRecv: %d %d\n", ULongRecv[ 2 ], ULongRecv[ 3 ] );
+
     if ( RecvLength !=
          sizeof( KdRpcCmdRecp ) +
          ULongRecv[ 2 ] +
          ULongRecv[ 3 ] +
          2 * sizeof( STRING_HEAD ) +//FIELD_OFFSET( STRING, Buffer ) +
-         sizeof( struct _KD_CONTEXT_DUP ) +
+         sizeof( KD_CONTEXT ) +
          sizeof( ULONG32 ) * KD_RPC_RECV_RETURNED_ULONGS + 2 ) {
 
         KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
+        DbgPrint( "KdVmwRpcRecvPacket failed2, has: %d, min: %d\n", RecvLength, RecvLengthMinimum );
         return KdStatusError;
     }
 
-    if ( Head != NULL && Head->Buffer != NULL && Head->MaximumLength >= ULongRecv[ 2 ] ) {
+    if ( Head != NULL ) {
+
+        //DbgPrint( "Head->MaximumLength: %d => %d\n", Head->MaximumLength, ULongRecv[ 2 ] );
+    }
+
+    if ( Body != NULL ) {
+
+        //DbgPrint( "Body->MaximumLength: %d => %d\n", Body->MaximumLength, ULongRecv[ 3 ] );
+    }
+
+    //
+    // Surprised code actually reaches this point, RecvLength has had inconsistent
+    // and invalid values for a while.
+    //
+
+    if ( Head != NULL && Head->MaximumLength >= ULongRecv[ 2 ] && ULongRecv[ 2 ] > 0 ) {
 
         KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
                                    ULongRecv[ 2 ],
                                    Head->Buffer );
     }
 
-    if ( Body != NULL && Body->Buffer != NULL && Body->MaximumLength >= ULongRecv[ 3 ] ) {
+    if ( Body != NULL && Body->MaximumLength >= ULongRecv[ 3 ] && ULongRecv[ 3 ] > 0 ) {
 
         KdVmwRpcRecvCommandBuffer( &KdDebugDevice.VmwRpc,
                                    ULongRecv[ 3 ],
                                    Body->Buffer );
     }
+
+    //
+    // ULongRecv[ 1 ] is seemingly invalid, perhaps 
+    // *Length = ULongRecv[ 2 ] + ULongRecv[ 3 ] + sizeof(...)
+    // and manually calculate this size.
+    //
 
     if ( Length != NULL ) {
 
@@ -530,6 +562,8 @@ KdVmwRpcRecvPacket(
     }
 
     KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
+
+    //DbgPrint( "done! ULongRecv->Result=%d\n", ULongRecv[ 0 ] );
 
     return ( KD_STATUS )ULongRecv[ 0 ];
 }
@@ -589,6 +623,7 @@ KdVmwRpcBufferedIoDone(
 
 )
 {
+    NT_ASSERT( KdpVmwRpcBufferedIoLength >= KdpVmwRpcBufferedIoIndex );
 
     KdVmwRpcSendCommandLength( &KdDebugDevice.VmwRpc,
                                KdpVmwRpcBufferedIoLength );

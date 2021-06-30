@@ -2,11 +2,17 @@
 #pragma once
 
 //
+// KD_DEBUG_NO_FREEZE creates a system thread, to poll for break-in,
+// this allows for DbgPrint's to be fed to DbgView of another tool,
+// with the default dpc method, you can't stay waiting in a dpc, can't use
+// waiting functions either, and just causes general issues, especially
+// for debugging.
+//
+#define KD_DEBUG_NO_FREEZE  1
 
 // Entry count of KdpBreakpointTable, 32 on windows.
-#define KD_BREAKPOINT_TABLE_LENGTH      256
+#define KD_BREAKPOINT_TABLE_LENGTH      32
 
-//
 
 #include <ntifs.h>
 
@@ -215,15 +221,19 @@ KdpSetCommonState(
 EXTERN_C BOOLEAN( *KeFreezeExecution )(
 
     );
+
 EXTERN_C BOOLEAN( *KeThawExecution )(
     _In_ BOOLEAN EnableInterrupts
     );
+
 EXTERN_C ULONG64( *KeSwitchFrozenProcessor )(
     _In_ ULONG32 Number
     );
+
 EXTERN_C PVOID( *MmGetPagedPoolCommitPointer )(
 
     );
+
 EXTERN_C NTSTATUS( *KdpSysReadControlSpace )(
     _In_  ULONG  Processor,
     _In_  ULONG  Address,
@@ -231,6 +241,7 @@ EXTERN_C NTSTATUS( *KdpSysReadControlSpace )(
     _In_  ULONG  Length,
     _Out_ PULONG TransferLength
     );
+
 EXTERN_C NTSTATUS( *KdpSysWriteControlSpace )(
     _In_  ULONG  Processor,
     _In_  ULONG  Address,
@@ -238,9 +249,20 @@ EXTERN_C NTSTATUS( *KdpSysWriteControlSpace )(
     _In_  ULONG  Length,
     _Out_ PULONG TransferLength
     );
+
 EXTERN_C VOID( *KdpGetStateChange )(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PCONTEXT                  Context
+    );
+
+EXTERN_C ULONG64( *KdpGetContext )(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+    );
+
+EXTERN_C BOOLEAN( *MmIsSessionAddress )(
+    ULONG_PTR Address
     );
 
 EXTERN_C PBOOLEAN            KdPitchDebugger;
@@ -251,12 +273,16 @@ EXTERN_C BOOLEAN             KdEnteredDebugger;
 EXTERN_C KTIMER              KdBreakTimer;
 EXTERN_C KDPC                KdBreakDpc;
 
+EXTERN_C ULONG64( *KdDecodeDataBlock )(
+
+    );
+
 EXTERN_C KDDEBUGGER_DATA64   KdDebuggerDataBlock;
 EXTERN_C DBGKD_GET_VERSION64 KdVersionBlock;
 EXTERN_C LIST_ENTRY          KdpDebuggerDataListHead;
 EXTERN_C ULONG64             KdpLoaderDebuggerBlock;
 EXTERN_C KD_CONTEXT          KdpContext;
 
-EXTERN_C KD_DEBUG_DEVICE             KdDebugDevice;
+EXTERN_C KD_DEBUG_DEVICE     KdDebugDevice;
 
 EXTERN_C PUSHORT             KeProcessorLevel;

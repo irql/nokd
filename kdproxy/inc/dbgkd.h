@@ -557,6 +557,69 @@ typedef struct ALIGN( 8 ) _DBGKM_EXCEPTION64 {
 #define KdApiWritePhysicalMemory 0x313E
 #endif
 
+#if 1
+//
+// Managed to find these definitions and thank you sir.
+//
+
+#define DbgKdMinimumManipulate              0x00003130L
+
+#define DbgKdReadVirtualMemoryApi           0x00003130L
+#define DbgKdWriteVirtualMemoryApi          0x00003131L
+#define DbgKdGetContextApi                  0x00003132L
+#define DbgKdSetContextApi                  0x00003133L
+#define DbgKdWriteBreakPointApi             0x00003134L
+#define DbgKdRestoreBreakPointApi           0x00003135L
+#define DbgKdContinueApi                    0x00003136L
+#define DbgKdReadControlSpaceApi            0x00003137L
+#define DbgKdWriteControlSpaceApi           0x00003138L
+#define DbgKdReadIoSpaceApi                 0x00003139L
+#define DbgKdWriteIoSpaceApi                0x0000313AL
+#define DbgKdRebootApi                      0x0000313BL
+#define DbgKdContinueApi2                   0x0000313CL
+#define DbgKdReadPhysicalMemoryApi          0x0000313DL
+#define DbgKdWritePhysicalMemoryApi         0x0000313EL
+#define DbgKdQuerySpecialCallsApi           0x0000313FL
+#define DbgKdSetSpecialCallApi              0x00003140L
+#define DbgKdClearSpecialCallsApi           0x00003141L
+#define DbgKdSetInternalBreakPointApi       0x00003142L
+#define DbgKdGetInternalBreakPointApi       0x00003143L
+#define DbgKdReadIoSpaceExtendedApi         0x00003144L
+#define DbgKdWriteIoSpaceExtendedApi        0x00003145L
+#define DbgKdGetVersionApi                  0x00003146L
+#define DbgKdWriteBreakPointExApi           0x00003147L
+#define DbgKdRestoreBreakPointExApi         0x00003148L
+#define DbgKdCauseBugCheckApi               0x00003149L
+#define DbgKdSwitchProcessor                0x00003150L
+#define DbgKdPageInApi                      0x00003151L // obsolete
+#define DbgKdReadMachineSpecificRegister    0x00003152L
+#define DbgKdWriteMachineSpecificRegister   0x00003153L
+#define OldVlm1                             0x00003154L
+#define OldVlm2                             0x00003155L
+#define DbgKdSearchMemoryApi                0x00003156L
+#define DbgKdGetBusDataApi                  0x00003157L
+#define DbgKdSetBusDataApi                  0x00003158L
+#define DbgKdCheckLowMemoryApi              0x00003159L
+#define DbgKdClearAllInternalBreakpointsApi 0x0000315AL
+#define DbgKdFillMemoryApi                  0x0000315BL
+#define DbgKdQueryMemoryApi                 0x0000315CL
+#define DbgKdSwitchPartition                0x0000315DL
+
+#define DbgKdGetContextEx                   0x0000315FL
+#define DbgKdSetContextEx                   0x00003160L
+#define DbgKdWriteCustomBreakpointEx        0x00003161L
+#define DbgKdReadPhysicalMemoryLong         0x00003162L
+
+#define DbgKdMaximumManipulate              0x00003163L
+
+//
+// There is another one for reading physical memory, with run length encoding
+// however, I won't be implementing that and I'm yet to see a debugger call it.
+//
+
+#endif
+
+#if 0
 typedef enum _KD_API_NUMBER {
     KdApiReadMemory = 0x3130,
     KdApiWriteMemory,
@@ -596,9 +659,9 @@ typedef enum _KD_API_NUMBER {
     KdApiSetContextEx,
     KdApiWriteCustomBreakPoint,
     KdApiReadPhysicalMemoryRLE,
-
-
 } KD_API_NUMBER, *PKD_API_NUMBER;
+
+#endif
 
 typedef struct _DBGKD_CONTROL_REPORT {
     ULONG64 Dr6;
@@ -631,6 +694,8 @@ typedef struct _DBGKD_WAIT_STATE_CHANGE {
     } u;
     DBGKD_CONTROL_REPORT ControlReport;
 } DBGKD_WAIT_STATE_CHANGE, *PDBGKD_WAIT_STATE_CHANGE;
+
+C_ASSERT( FIELD_OFFSET( DBGKD_WAIT_STATE_CHANGE, CurrentThread ) == 16 );
 
 #define KD_LEADER_BREAK_IN      0x62626262
 #define KD_LEADER_BREAK_IN_BYTE 0x62
@@ -952,6 +1017,7 @@ typedef struct _KDDEBUGGER_DATA64 {
 } KDDEBUGGER_DATA64, *PKDDEBUGGER_DATA64;
 
 C_ASSERT( sizeof( KDDEBUGGER_DATA64 ) == 0x380 );
+C_ASSERT( FIELD_OFFSET( KDDEBUGGER_DATA64, KernBase ) == 0x18 );
 
 #pragma pack( push, 2 )
 typedef struct _KD_CONTEXT {
