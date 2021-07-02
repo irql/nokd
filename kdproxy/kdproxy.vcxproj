@@ -155,6 +155,8 @@
     <ClCompile Include="communic\communic.c" />
     <ClCompile Include="init.c" />
     <ClCompile Include="kdimpl\kdapi.c" />
+    <ClCompile Include="kdimpl\kdbp.c" />
+    <ClCompile Include="kdimpl\report.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="kdimpl\swc.c" />
     <ClCompile Include="communic\uart.c" />

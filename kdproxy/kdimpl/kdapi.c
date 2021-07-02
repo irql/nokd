@@ -2,7 +2,6 @@
 #include <kd.h>
 
 ULONG32             KdTransportMaxPacketSize = 0xFA0; // 4000.
-KD_BREAKPOINT_ENTRY KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ];
 
 #if 0
 KDAPI
@@ -48,22 +47,47 @@ KdpReadVirtualMemory(
                                          MM_COPY_ADDRESS_VIRTUAL,
                                          &ReadCount );
 #endif
-    Packet->ReturnStatus = STATUS_SUCCESS;
-    __try {
-        memcpy( Body->Buffer,
-            ( void* )Packet->u.ReadMemory.TargetBaseAddress,
-                ReadCount );
-        Body->Length = ( USHORT )ReadCount;
-        Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
-    }
-    __except ( EXCEPTION_EXECUTE_HANDLER ) {
+
+    /*
+    PAGE_FAULT_IN_NONPAGED_AREA (50)
+        Invalid system memory was referenced.  This cannot be protected by try-except.
+        Typically the address is just plain bad or it is pointing at freed memory.
+    */
+
+    //
+    // Also the reason I don't use MmCopyMemory or MmCopyVirtualMemory
+    // is because they won't read stuff like the UserSharedData
+    //
+    // To account for this, we're going to validate the memory
+    // referenced. Oh well, just remembered MmIsAddressValid exists
+    // and that works fine to check if I'll #PF.
+    // 
+    // MmNonPagedPoolStart, MmNonPagedPoolEnd
+    //
+
+    if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ) {
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Body->Length = 0;
         Packet->u.ReadMemory.ActualBytesRead = 0;
     }
+    else {
 
+        Packet->ReturnStatus = STATUS_SUCCESS;
+        __try {
+            memcpy( Body->Buffer,
+                ( void* )Packet->u.ReadMemory.TargetBaseAddress,
+                    ReadCount );
+            Body->Length = ( USHORT )ReadCount;
+            Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+        }
+        __except ( EXCEPTION_EXECUTE_HANDLER ) {
 
+            Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+            Body->Length = 0;
+            Packet->u.ReadMemory.ActualBytesRead = 0;
+        }
+    }
 
     Reciprocate.MaximumLength = 0;
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -88,6 +112,7 @@ KdpWriteVirtualMemory(
 )
 {
     STRING Reciprocate;
+#if 0
     SIZE_T Length;
 
     Packet->ReturnStatus = MmCopyMemory( ( PVOID )Packet->u.WriteMemory.TargetBaseAddress,
@@ -96,6 +121,26 @@ KdpWriteVirtualMemory(
                                          MM_COPY_ADDRESS_VIRTUAL,
                                          &Length );
     Packet->u.WriteMemory.TransferCount = ( unsigned int )Length;
+#endif
+    if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ) {
+
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        Packet->u.WriteMemory.TransferCount = 0;
+    }
+    else {
+        Packet->ReturnStatus = STATUS_SUCCESS;
+        __try {
+            memcpy( ( void* )Packet->u.WriteMemory.TargetBaseAddress,
+                    Body->Buffer,
+                    Body->Length );
+            Packet->u.WriteMemory.TransferCount = ( unsigned int )Body->Length;
+        }
+        __except ( EXCEPTION_EXECUTE_HANDLER ) {
+
+            Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+            Packet->u.WriteMemory.TransferCount = 0;
+        }
+    }
 
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -212,148 +257,6 @@ KdpGetStateChangeApi(
     Body;
     Context;
     return KdStatusSuccess;
-}
-
-//
-// The current implementation for breakpoints is to 
-// write some shellcode that will jump to some more shellcode,
-// this shellcode will save the state of all registers and then
-// send an exception
-//
-//
-//
-
-//
-// The aim is to just have shellcode under 15 bytes
-//
-// ff 25 00 00 00 00        jmp  qword ptr [rip]
-// xx xx xx xx xx xx xx xx  dq   shellcode_address
-//
-
-static ULONG BreakpointCodeLength = 6 + 8;
-static UCHAR BreakpointCode[ ] = {
-    0xff, 0x25, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
-KD_STATUS
-KdpAddBreakpoint(
-    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body
-)
-{
-    Body;
-
-    //
-    // Because of the nature of this,
-    // you are able to have any code setup
-    // for breakpoints such as a jump instead.
-    //
-
-    STRING  Reciprocate;
-    SIZE_T  Length;
-    ULONG32 CurrentBreakpoint;
-    ULONG32 BreakpointHandle;
-
-    BreakpointHandle = ( ULONG32 )-1;
-    for ( CurrentBreakpoint = 0;
-          CurrentBreakpoint < 256;
-          CurrentBreakpoint++ ) {
-
-        if ( ( KdpBreakpointTable[ CurrentBreakpoint ].Flags & KD_BPE_SET ) == 0 ) {
-
-            BreakpointHandle = CurrentBreakpoint;
-            break;
-        }
-    }
-
-    if ( BreakpointHandle == ( ULONG32 )-1 ) {
-
-        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
-        goto KdpProcedureDone;
-    }
-
-    KdpBreakpointTable[ BreakpointHandle ].Address = Packet->u.WriteBreakPoint.BreakPointAddress;
-    KdpBreakpointTable[ BreakpointHandle ].Process = PsGetCurrentProcess( );
-
-    Packet->ReturnStatus = MmCopyMemory( KdpBreakpointTable[ BreakpointHandle ].Content,
-        ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
-    if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
-
-        goto KdpProcedureDone;
-    }
-
-    Packet->u.WriteBreakPoint.BreakPointHandle = BreakpointHandle;
-
-    Packet->ReturnStatus = MmCopyMemory( ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         BreakpointCode,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
-    if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
-
-        goto KdpProcedureDone;
-    }
-
-    KdpBreakpointTable[ BreakpointHandle ].Flags |= KD_BPE_SET;
-
-KdpProcedureDone:
-    Reciprocate.MaximumLength = 0;
-    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
-    Reciprocate.Buffer = ( PCHAR )Packet;
-
-    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
-                                       &Reciprocate,
-                                       NULL,
-                                       &KdpContext );
-}
-
-KD_STATUS
-KdpDeleteBreakpoint(
-    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body
-)
-{
-    Body;
-
-    STRING     Reciprocate;
-    ULONG32    BreakpointHandle;
-    SIZE_T     Length;
-    KAPC_STATE ApcState;
-
-    // TODO: Needs range check.
-
-    BreakpointHandle = Packet->u.RestoreBreakPoint.BreakPointHandle;
-
-    if ( ( KdpBreakpointTable[ BreakpointHandle ].Flags & KD_BPE_SET ) == 0 ) {
-
-        Packet->ReturnStatus = STATUS_SUCCESS;//STATUS_UNSUCCESSFUL;
-        goto KdpProcedureDone;
-    }
-
-    KeStackAttachProcess( KdpBreakpointTable[ BreakpointHandle ].Process, &ApcState );
-
-    Packet->ReturnStatus = MmCopyMemory( ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         KdpBreakpointTable[ BreakpointHandle ].Content,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
-    KdpBreakpointTable[ BreakpointHandle ].Flags &= ~KD_BPE_SET;
-
-    KeUnstackDetachProcess( &ApcState );
-
-KdpProcedureDone:
-    Reciprocate.MaximumLength = 0;
-    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
-    Reciprocate.Buffer = ( PCHAR )Packet;
-
-    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
-                                       &Reciprocate,
-                                       NULL,
-                                       &KdpContext );
 }
 
 KD_STATUS
@@ -652,24 +555,48 @@ KdpQueryMemory(
 
     if ( Packet->u.QueryMemory.AddressSpace != 0 ) {
 
+        //
+        // Bit weird, but okay windows.
+        //
+
         Packet->ReturnStatus = STATUS_INVALID_PARAMETER;
     }
     else {
 
-        //
-        // 0 - UserSpace
-        // 1 - SessionSpace
-        // 2 - SystemSpace
-        //
-
         if ( Packet->u.QueryMemory.Address >= 0x7FFFFFFEFFFF ) {
 
-            Packet->u.QueryMemory.AddressSpace = 2 - ( MmIsSessionAddress( Packet->u.QueryMemory.Address ) != 0 );
+            //
+            // TODO: We can replace MmIsSessionAddress in the future, we
+            //       can use KdDebuggerData.MmSessionBase - KdDebuggerData.MmSessionSize
+            //       or hardcode FFFFF900`00000000 to FFFFF97F`FFFFFFFF
+            //
+
+            if ( MmIsSessionAddress( Packet->u.QueryMemory.Address ) ) {
+
+                Packet->u.QueryMemory.AddressSpace = SessionSpace;
+            }
+            else {
+
+                Packet->u.QueryMemory.AddressSpace = SystemSpace;
+            }
         }
+        else {
+
+            Packet->u.QueryMemory.AddressSpace = UserSpace;
+        }
+
+        DbgPrint( "%p -> D3DNIG_%s\n", Packet->u.QueryMemory.Address,
+            ( ( char*[ ] ){ "UserSpace", "SessionSpace", "SystemSpace" } )[ Packet->u.QueryMemory.AddressSpace ] );
 
         Packet->u.QueryMemory.Flags = 7;
         Packet->ReturnStatus = STATUS_SUCCESS;
     }
+
+    //
+    // Windows sets this to zero for some reason.
+    //
+
+    Packet->u.QueryMemory.Reserved = 0;
 
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );

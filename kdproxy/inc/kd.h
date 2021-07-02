@@ -8,13 +8,50 @@
 // waiting functions either, and just causes general issues, especially
 // for debugging.
 //
-#define KD_DEBUG_NO_FREEZE  1
+#define KD_DEBUG_NO_FREEZE      1
 
-// Entry count of KdpBreakpointTable, 32 on windows.
+//
+// Haven't really tested the UART functionality, it was
+// written at a very early stage in this project's lifespan.
+// It's significantly slower than vmwrpc, which is enabled
+// by default, also - sorry vbox users lol.
+//
+#define KD_UART_ENABLED         0
+
+//
+// If this is enabled, then KdpSendWaitContinue will
+// log all packets received using a DbgPrint - this doesn't
+// display on the windbg instance for obvious reasons.
+//
+#define KD_RECV_PACKET_LOGGING  1
+
+//
+// Breakpoint entry count of KdpBreakpointTable, 
+// this is 32 on windows, and not really a big deal.
+//
 #define KD_BREAKPOINT_TABLE_LENGTH      32
 
+//
+// Patterns for everything this driver requires.
+//
+
+#if 0
+#define KD_SECTION_BASE( x )   ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )KD_SECTION_SIZE_( x ))
+#define KD_SECTION_SIZE( x )   KD_SECTION_SIZE_( x )
+#define KD_SECTION_BASE_( x )  Section##x##Base  
+#define KD_SECTION_SIZE_( x )  Section##x##Size
+
+#define KD_SIG_KdTrap_SECTION  Text
+#define KD_SIG_KdTrap_PATTERN  "48 83 EC 38 83 3D ? ? ? ? ? 8A 44 24 68"
+#endif
 
 #include <ntifs.h>
+
+//
+// Undefine any conflicts with this drivers implementations.
+//
+
+#undef KdPrint
 
 //nonstandard extension, function / data pointer conversion in expression
 #pragma warning( disable : 4152 ) 
@@ -95,24 +132,7 @@ typedef struct _KD_DEBUG_DEVICE {
         KD_UART_CONTROL   Uart;
         KD_VMWRPC_CONTROL VmwRpc;
     };
-#if 0
-    KD_UART_STATUS( *Send )(
-        _In_ PKD_DEBUG_DEVICE Port,
-        _In_ UCHAR    Byte );
-    KD_UART_STATUS( *Recv )(
-        _In_ PKD_DEBUG_DEVICE Port,
-        _In_ PUCHAR   Byte );
-#endif
-#if 0
-    KD_STATUS( *Send )(
-        _In_ PKD_DEBUG_DEVICE DebugDevice,
-        _In_ PVOID            String,
-        _In_ ULONG            Length );
-    KD_STATUS( *Recv )(
-        _In_ PKD_DEBUG_DEVICE DebugDevice,
-        _In_ PVOID            String,
-        _In_ ULONG            Length );
-#endif
+
     //
     // List of kd* dll api's:
     //  KdReceivePacket
@@ -154,9 +174,20 @@ typedef struct _KD_BREAKPOINT_ENTRY {
 } KD_BREAKPOINT_ENTRY, *PKD_BREAKPOINT_ENTRY;
 
 //
+// Defines constants that describe the nig mode.
+//
+
+typedef enum _D3DNIGMODE {
+    D3DNIG_NONE     = 0,
+    D3DNIG_MODE     = 1,
+    D3DNIG_LOAD     = 2,
+    D3DNIG_MAXIMUM  = 3,
+} D3DNIGMODE, *PD3DNIGMODE;
+
+//
 // definitions for kdapi, which are 
 // used per KD_API_NUMBER, declared
-// inside kdapi.c.
+// inside kdimpl.
 //
 
 #define KDAPI 
@@ -206,6 +237,42 @@ KdpSetCommonState(
     _In_    ULONG32                  ApiNumber,
     _In_    PCONTEXT                 Context,
     _Inout_ PDBGKD_WAIT_STATE_CHANGE Change
+);
+
+VOID
+KdpSetContextState(
+    _Inout_ PDBGKD_WAIT_STATE_CHANGE Change,
+    _In_    PCONTEXT                 Context
+);
+
+BOOLEAN
+KdpReportLoadSymbolsStateChange(
+    _In_    PSTRING         PathName,
+    _In_    PKD_SYMBOL_INFO Symbol,
+    _In_    BOOLEAN         Unload,
+    _Inout_ PCONTEXT        Context
+);
+
+NTSTATUS
+KdReportLoaded(
+    _In_ PCHAR ImageName,
+    _In_ PCHAR ImagePath
+);
+
+VOID
+KdPrint(
+    _In_ PCHAR Format,
+    _In_ ...
+);
+
+VOID
+KdBpContextStore(
+
+);
+
+VOID
+KdBpContextRestore(
+
 );
 
 //
@@ -262,7 +329,7 @@ EXTERN_C ULONG64( *KdpGetContext )(
     );
 
 EXTERN_C BOOLEAN( *MmIsSessionAddress )(
-    ULONG_PTR Address
+    _In_ ULONG_PTR Address
     );
 
 EXTERN_C PBOOLEAN            KdPitchDebugger;
@@ -286,3 +353,5 @@ EXTERN_C KD_CONTEXT          KdpContext;
 EXTERN_C KD_DEBUG_DEVICE     KdDebugDevice;
 
 EXTERN_C PUSHORT             KeProcessorLevel;
+
+EXTERN_C UCHAR               KdpMessageBuffer[ 0x1000 ];

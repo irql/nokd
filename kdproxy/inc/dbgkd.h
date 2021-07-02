@@ -22,12 +22,17 @@
 typedef struct ALIGN( 8 ) _DBGKD_LOAD_SYMBOLS64
 {
     unsigned int PathNameLength;
+    unsigned int Padding0;
     unsigned __int64 BaseOfDll;
     unsigned __int64 ProcessId;
     unsigned int CheckSum;
     unsigned int SizeOfImage;
     unsigned __int8 UnloadSymbols;
 } ALIGN( 8 ) DBGKD_LOAD_SYMBOLS64, *PDBGKD_LOAD_SYMBOLS64;
+
+C_ASSERT( FIELD_OFFSET( DBGKD_LOAD_SYMBOLS64, BaseOfDll ) == 8 );
+C_ASSERT( FIELD_OFFSET( DBGKD_LOAD_SYMBOLS64, UnloadSymbols ) == 0x20 );
+C_ASSERT( sizeof( DBGKD_LOAD_SYMBOLS64 ) == 0x28 );
 
 /* 1401 */
 typedef struct ALIGN( 4 ) _DBGKD_LOAD_SYMBOLS32
@@ -294,17 +299,17 @@ typedef struct _DBGKD_QUERY_SPECIAL_CALLS
 /* 1434 */
 typedef struct _DBGKD_GET_VERSION64
 {
-    unsigned __int16 MajorVersion;
-    unsigned __int16 MinorVersion;
+    USHORT MajorVersion;
+    USHORT MinorVersion;
     unsigned __int8 ProtocolVersion;
     unsigned __int8 KdSecondaryVersion;
-    unsigned __int16 Flags;
-    unsigned __int16 MachineType;
+    USHORT Flags;
+    USHORT MachineType;
     unsigned __int8 MaxPacketType;
     unsigned __int8 MaxStateChange;
     unsigned __int8 MaxManipulate;
     unsigned __int8 Simulation;
-    unsigned __int16 Unused[ 1 ];
+    USHORT Unused[ 1 ];
     unsigned __int64 KernBase;
     unsigned __int64 PsLoadedModuleList;
     unsigned __int64 DebuggerDataList;
@@ -398,8 +403,8 @@ typedef struct _DBGKD_FILL_MEMORY
 {
     unsigned __int64 Address;
     unsigned int Length;
-    unsigned __int16 Flags;
-    unsigned __int16 PatternLength;
+    USHORT Flags;
+    USHORT PatternLength;
 } DBGKD_FILL_MEMORY, *PDBGKD_FILL_MEMORY;
 
 /* 1441 */
@@ -410,6 +415,8 @@ typedef struct _DBGKD_QUERY_MEMORY
     unsigned int AddressSpace;
     unsigned int Flags;
 } DBGKD_QUERY_MEMORY, *PDBGKD_QUERY_MEMORY;
+
+C_ASSERT( FIELD_OFFSET( DBGKD_QUERY_MEMORY, Flags ) == 0x14 );
 
 /* 1442 */
 typedef struct _DBGKD_SWITCH_PARTITION
@@ -439,8 +446,8 @@ typedef struct ALIGN( 4 ) _DBGKD_WRITE_CUSTOM_BREAKPOINT
 typedef struct ALIGN( 8 ) _DBGKD_MANIPULATE_STATE64
 {
     unsigned int ApiNumber;
-    unsigned __int16 ProcessorLevel;
-    unsigned __int16 Processor;
+    USHORT ProcessorLevel;
+    USHORT Processor;
     int ReturnStatus;
     union
     {
@@ -477,16 +484,16 @@ C_ASSERT( sizeof( DBGKD_MANIPULATE_STATE64 ) == 0x38 );
 /* 1446 */
 typedef struct _DBGKD_GET_VERSION32
 {
-    unsigned __int16 MajorVersion;
-    unsigned __int16 MinorVersion;
-    unsigned __int16 ProtocolVersion;
-    unsigned __int16 Flags;
+    USHORT MajorVersion;
+    USHORT MinorVersion;
+    USHORT ProtocolVersion;
+    USHORT Flags;
     unsigned int KernBase;
     unsigned int PsLoadedModuleList;
-    unsigned __int16 MachineType;
-    unsigned __int16 ThCallbackStack;
-    unsigned __int16 NextCallback;
-    unsigned __int16 FramePointer;
+    USHORT MachineType;
+    USHORT ThCallbackStack;
+    USHORT NextCallback;
+    USHORT FramePointer;
     unsigned int KiCallUserMode;
     unsigned int KeUserCallbackDispatcher;
     unsigned int BreakpointWithStatus;
@@ -497,8 +504,8 @@ typedef struct _DBGKD_GET_VERSION32
 typedef struct _DBGKD_MANIPULATE_STATE32
 {
     unsigned int ApiNumber;
-    unsigned __int16 ProcessorLevel;
-    unsigned __int16 Processor;
+    USHORT ProcessorLevel;
+    USHORT Processor;
     int ReturnStatus;
     union
     {
@@ -531,7 +538,6 @@ typedef struct ALIGN( 8 ) _DBGKM_EXCEPTION64 {
     EXCEPTION_RECORD64 ExceptionRecord;
     unsigned int FirstChance;
 } ALIGN( 8 ) DBGKM_EXCEPTION64, *ALIGN_PTR( 8 ) PDBGKM_EXCEPTION64;
-
 
 #pragma pack( pop )
 
@@ -676,10 +682,20 @@ typedef struct _DBGKD_CONTROL_REPORT {
     USHORT  SegFs;
 } DBGKD_CONTROL_REPORT, *PDBGKD_CONTROL_REPORT;
 
+typedef struct _DBGKD_PRINT_STRING {
+    ULONG32 ApiNumber;
+    USHORT  ProcessorLevel;
+    USHORT  Processor;
+    ULONG32 Length;
+    ULONG32 Pad0;
+} DBGKD_PRINT_STRING, *PDBGKD_PRINT_STRING;
+
+C_ASSERT( sizeof( DBGKD_PRINT_STRING ) == 0x10 );
+
 typedef struct _DBGKD_WAIT_STATE_CHANGE {
     ULONG32 ApiNumber;
-    unsigned __int16 ProcessorLevel;
-    unsigned __int16 Processor;
+    USHORT  ProcessorLevel;
+    USHORT  Processor;
     ULONG32 ProcessorCount;
     ULONG64 CurrentThread;
     ULONG64 ProgramCounter;
@@ -705,6 +721,19 @@ C_ASSERT( FIELD_OFFSET( DBGKD_WAIT_STATE_CHANGE, CurrentThread ) == 16 );
 #define KD_LEADER_CONTROL_BYTE  0x69
 
 #define KD_PACKET_ID_RESET      0x80800000
+
+typedef enum _ADDRESS_SPACE {
+    SystemSpace,
+    SessionSpace,
+    UserSpace,
+} ADDRESS_SPACE;
+
+typedef struct _KD_SYMBOL_INFO {
+    ULONG64 BaseAddress;
+    ULONG64 ProcessId;
+    ULONG32 CheckSum;
+    ULONG32 SizeOfImage;
+} KD_SYMBOL_INFO, *PKD_SYMBOL_INFO;
 
 //
 // WDBGEXTS.H
@@ -1062,11 +1091,12 @@ KdMessageChecksum(
 
 typedef enum _KD_PACKET_TYPE {
     KdTypeStateManipulate = 2,
-    KdTypeAcknowledge = 4,
-    KdTypeResend = 5,
-    KdTypeReset = 6,
-    KdTypeStateChange = 7,
-    KdTypePollBreakin = 8,
-    KdTypeControlRequest = 10,
-    KdTypeFileIo = 11
+    KdTypePrint           = 3,
+    KdTypeAcknowledge     = 4,
+    KdTypeResend          = 5,
+    KdTypeReset           = 6,
+    KdTypeStateChange     = 7,
+    KdTypePollBreakin     = 8,
+    KdTypeControlRequest  = 10,
+    KdTypeFileIo          = 11,
 } KD_PACKET_TYPE, *PKD_PACKET_TYPE;

@@ -1,8 +1,6 @@
 ﻿
 #include "kd.h"
 
-#define KD_RECV_PACKET_LOGGING 1
-
 UCHAR KdpMessageBuffer[ 0x1000 ];
 
 BOOLEAN
@@ -35,6 +33,11 @@ KdpSetCommonState(
     Change->ApiNumber = ApiNumber;
     Change->Processor = ( USHORT )KeGetCurrentProcessorNumber( );
     Change->ProcessorCount = KeQueryActiveProcessorCountEx( 0xFFFF );
+    if ( Change->Processor <= Change->ProcessorCount ) {
+
+        Change->ProcessorCount = Change->Processor + 1;
+    }
+
     Change->ProcessorLevel = *KeProcessorLevel;
     Change->CurrentThread = ( ULONG64 )KeGetCurrentThread( );
     Change->ProgramCounter = Context->Rip;
@@ -47,7 +50,6 @@ KdpSetCommonState(
                   MM_COPY_ADDRESS_VIRTUAL,
                   &InstructionCount );
     Change->ControlReport.InstructionCount = ( USHORT )InstructionCount;
-
 }
 
 VOID
@@ -62,8 +64,20 @@ KdpSetContextState(
 
     Change->ControlReport.Dr6 = 0;
     Change->ControlReport.Dr7 = 0;
-    Change->ControlReport.SegCs = 0x10;
-    Change->ControlReport.ReportFlags = 0x3;
+
+    Change->ControlReport.SegCs = Context->SegCs;
+    Change->ControlReport.SegDs = Context->SegDs;
+    Change->ControlReport.SegEs = Context->SegEs;
+    Change->ControlReport.SegFs = Context->SegFs;
+
+    Change->ControlReport.EFlags = Context->EFlags;
+    Change->ControlReport.ReportFlags = 1;
+
+    if ( Context->SegCs == KdDebuggerDataBlock.GdtR0Code ||
+         Context->SegCs == KdDebuggerDataBlock.GdtR3Code ) {
+
+        Change->ControlReport.ReportFlags = 0x3;
+    }
 }
 
 BOOLEAN
@@ -207,10 +221,6 @@ KdpResendPacket:
                  Packet.ApiNumber >= DbgKdMinimumManipulate &&
                  Packet.ApiNumber < DbgKdMaximumManipulate ) {
 
-#if KD_RECV_PACKET_LOGGING
-                DbgPrint( "%s\n", DbgKdApi[ Packet.ApiNumber - DbgKdMinimumManipulate ] );
-#endif
-
                 switch ( Packet.ApiNumber ) {
                 case DbgKdReadVirtualMemoryApi:
                     KdpReadVirtualMemory( &Packet,
@@ -302,16 +312,16 @@ KdpResendPacket:
                                                 &Head,
                                                 NULL,
                                                 &KdpContext );
+                    //KdPrint( "KdApiNumber unhandled: %#.4lx\n", Packet.ApiNumber );
                     break;
                 }
-            }
-            else {
-#if 0
-                KdDebugDevice.KdSendPacket( KdTypeStateChange,
-                                            StateChangeHead,
-                                            StateChangeBody,
-                                            &KdpContext );
+
+#if KD_RECV_PACKET_LOGGING
+                DbgPrint( "%s %lx\n",
+                          DbgKdApi[ Packet.ApiNumber - DbgKdMinimumManipulate ],
+                          Packet.ReturnStatus );
 #endif
+
             }
 
 #if KD_DEBUG_NO_FREEZE
