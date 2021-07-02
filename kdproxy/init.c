@@ -62,11 +62,13 @@ VOID( *KdpGetStateChange )(
 // then it will ignore the CONTEXT parameter and get it from the 
 // Prcb.
 //
+#if 0
 ULONG64( *KdpGetContext )(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PSTRING                   Body,
     _Inout_ PCONTEXT                  Context
     );
+#endif
 
 //
 // Referenced inside KdpQueryMemory, to check if
@@ -105,6 +107,7 @@ KDDEBUGGER_DATA64           KdDebuggerDataBlock = { 0 };
    +0x010 KernBase         : 0xfffff800`2b807000
    +0x018 PsLoadedModuleList : 0xfffff800`2c4305a0
    +0x020 DebuggerDataList : 0xfffff800`2c4472d0
+   More comments on this structure inside KdDriverLoad.
 */
 
 DBGKD_GET_VERSION64         KdVersionBlock = {
@@ -125,8 +128,6 @@ DBGKD_GET_VERSION64         KdVersionBlock = {
 LIST_ENTRY                  KdpDebuggerDataListHead;
 ULONG64                     KdpLoaderDebuggerBlock = 0;
 KD_CONTEXT                  KdpContext;
-
-DECLSPEC_IMPORT PLIST_ENTRY PsLoadedModuleList;
 
 VOID
 KdBreakTimerDpcCallback(
@@ -168,60 +169,44 @@ KdBreakTimerDpcCallback(
 
     //KeCancelTimer( &KdBreakTimer );
 
-    //KIRQL                   PreviousIrql;
-    //ULONG                   Interrupts;
+    BOOLEAN                 Interrupts;
     STRING                  Head;
-    DBGKD_WAIT_STATE_CHANGE Change = { 0 };
-    CONTEXT                 ZeroContext = { 0 };
-    SIZE_T                  InstructionCount;
-
-    //KeRaiseIrql( DISPATCH_LEVEL, &PreviousIrql );
-    //KeRaiseIrql( HIGH_LEVEL, &PreviousIrql );
-    //Interrupts = __readeflags( ) & 0x200;
-    //_disable( );
-
-    DbgPrint( "Kd Query!\n" );
+    DBGKD_WAIT_STATE_CHANGE Exception = { 0 };
+    CONTEXT                 Context = { 0 };
 
     if ( KdPollBreakIn( ) ) {
 
-        DbgPrint( "Broke in!\n" );
+        Interrupts = KeFreezeExecution( );
 
-        //Interrupts = KeFreezeExecution( );
+        Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
+        Context.Rsp = 0;
+
+        Context.EFlags = 2;
+        Context.SegCs = ( USHORT )KdDebuggerDataBlock.GdtR0Code;
+        Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+        Context.SegFs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+        Context.SegEs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+        Context.SegDs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+        Context.ContextFlags = CONTEXT_AMD64 | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
 
         Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
-        Head.MaximumLength = 0;
-        Head.Buffer = ( PCHAR )&Change;
+        Head.MaximumLength = sizeof( DBGKD_WAIT_STATE_CHANGE );
+        Head.Buffer = ( PCHAR )&Exception;
 
-        Change.ApiNumber = 0x3030;
-        Change.CurrentThread = ( ULONG64 )KeGetCurrentThread( );
-        Change.Processor = ( USHORT )KeGetCurrentProcessorNumber( );
-        Change.ProgramCounter = ( ULONG64 )KdBreakTimerDpcCallback;
-        Change.ProcessorLevel = *KeProcessorLevel;
-        Change.u.Exception.FirstChance = FALSE;
-        Change.u.Exception.ExceptionRecord.ExceptionCode = 0x80000003;
-        Change.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdBreakTimerDpcCallback;
-        Change.ControlReport.SegCs = 0x10;
-        Change.ControlReport.ReportFlags = 3;
+        KdpSetCommonState( 0x3030, &Context, &Exception );
+        KdpSetContextState( &Exception, &Context );
 
-        RtlZeroMemory( &Change.ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
+        Exception.u.Exception.FirstChance = TRUE;
+        Exception.u.Exception.ExceptionRecord.ExceptionCode = STATUS_BREAKPOINT;
+        Exception.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
 
-        MmCopyMemory( Change.ControlReport.InstructionStream,
-            ( PVOID )Change.ProgramCounter,
-                      0x10,
-                      MM_COPY_ADDRESS_VIRTUAL,
-                      &InstructionCount );
-        Change.ControlReport.InstructionCount = ( USHORT )InstructionCount;
 
         KdpSendWaitContinue( 0,
                              &Head,
                              NULL,
-                             &ZeroContext );
-        //KeThawExecution( ( BOOLEAN )Interrupts );
+                             &Context );
+        KeThawExecution( ( BOOLEAN )Interrupts );
     }
-
-    //__writeeflags( __readeflags( ) | Interrupts );
-    //KeLowerIrql( PreviousIrql );
-
 }
 
 #if KD_DEBUG_NO_FREEZE
@@ -245,7 +230,7 @@ KdDebugThreadProcedure(
             DbgPrint( "KdDebugThreadProcedure broke in.\n" );
 
 #if 1
-            Context.Rip = ( ULONG64 )KdDebugThreadProcedure;
+            Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
             Context.Rsp = 0;
 
             Context.EFlags = 2;
@@ -265,7 +250,7 @@ KdDebugThreadProcedure(
 
             Exception.u.Exception.FirstChance = TRUE;
             Exception.u.Exception.ExceptionRecord.ExceptionCode = STATUS_BREAKPOINT;
-            Exception.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdDebugThreadProcedure;
+            Exception.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
 
             KdpSendWaitContinue( 0,
                                  &Head,
@@ -336,7 +321,7 @@ KdDriverLoad(
     ULONG_PTR          KdpSysWriteControlSpaceAddress;
     ULONG_PTR          KdpGetStateChangeAddress;
     ULONG_PTR          KeProcessorLevelAddress;
-    ULONG_PTR          KdpGetContextAddress;
+    //ULONG_PTR          KdpGetContextAddress;
     ULONG_PTR          KdDecodeDataBlockAddress;
     ULONG_PTR          MmIsSessionAddressAddress;
     PKDDEBUGGER_DATA64 KdDebuggerDataBlockDefault;
@@ -518,7 +503,7 @@ KdDriverLoad(
     KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + *( LONG32* )( KeProcessorLevelAddress + 6 ) );
 
     DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
-
+#if 0
     KdpGetContextAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionPageKdBase ),
                                                            SectionPageKdSize,
                                                            "E8 ? ? ? ? 44 39 75 EF" );
@@ -532,7 +517,7 @@ KdDriverLoad(
     KdpGetContext = ( PVOID )( KdpGetContextAddress + 5 + *( LONG32* )( KdpGetContextAddress + 1 ) );
 
     DbgPrint( "KdpGetContext: %p\n", KdpGetContext );
-
+#endif
     KdDecodeDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionTextBase ),
                                                                SectionTextSize,
                                                                "E8 ? ? ? ? 48 8B 45 88 4C 8D 9D ? ? ? ? " );
@@ -711,17 +696,9 @@ KdDriverLoad(
     // be a real project without it.
     //
 
-    KdPrint(
-        "              __          __     \n"
-        "             /\\ \\        /\\ \\    \n"
-        "  ___     ___\\ \\ \\/'\\    \\_\\ \\   \n"
-        "/' _ `\\  / __`\\ \\ , <    /'_` \\  \n"
-        "/\\ \\/\\ \\/\\ \\L\\ \\ \\ \\\\`\\ /\\ \\L\\ \\ \n"
-        "\\ \\_\\ \\_\\ \\____/\\ \\_\\ \\_\\ \\___,_\\\n"
-        " \\/_/\\/_/\\/___/  \\/_/\\/_/\\/__,_ /\n"
-        "\n" );
+    KdPrint( KD_STARTUP_SIG );
 
-    KdReportLoaded( "kd.sys", "kdproxy.sys" );
+    KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
 
 
 #if KD_DEBUG_NO_FREEZE
@@ -749,4 +726,4 @@ KdDriverLoad(
 #endif
 
     return STATUS_SUCCESS;
-    }
+}

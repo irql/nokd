@@ -96,7 +96,7 @@ KdReportLoaded(
     STRING         PathName;
 
     Context.ContextFlags = CONTEXT_AMD64 | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
-    Context.Rip = ( ULONG64 )KdReportLoaded;
+    Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
     Context.Rsp = 0;
 
     Context.EFlags = 2;

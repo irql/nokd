@@ -45,6 +45,20 @@
 #define KD_SIG_KdTrap_PATTERN  "48 83 EC 38 83 3D ? ? ? ? ? 8A 44 24 68"
 #endif
 
+#define KD_STARTUP_SIG \
+"              __          __     \n" \
+"             /\\ \\        /\\ \\    \n" \
+"  ___     ___\\ \\ \\/'\\    \\_\\ \\   \n" \
+"/' _ `\\  / __`\\ \\ , <    /'_` \\  \n" \
+"/\\ \\/\\ \\/\\ \\L\\ \\ \\ \\\\`\\ /\\ \\L\\ \\ \n" \
+"\\ \\_\\ \\_\\ \\____/\\ \\_\\ \\_\\ \\___,_\\\n" \
+" \\/_/\\/_/\\/___/  \\/_/\\/_/\\/__,_ /\n" \
+"\n"
+
+#define KD_SYMBOLIC_NAME    "kd"
+#define KD_FILE_NAME        "kdproxy.sys"
+
+
 #include <ntifs.h>
 
 //
@@ -155,14 +169,6 @@ typedef struct _KD_DEBUG_DEVICE {
         _Inout_ PKD_CONTEXT    KdContext );
 
 } KD_DEBUG_DEVICE, *PKD_DEBUG_DEVICE;
-
-typedef struct _KD_PRCB {
-    ULONG32           Number;
-    KIRQL             DebuggerSavedIrql;
-    XSAVE_AREA_HEADER SupervisorState;
-    PVOID             NtPrcb;
-
-} KD_PRCB, *PKD_PRCB;
 
 #define KD_BPE_SET      (0x00000001)
 
@@ -322,11 +328,14 @@ EXTERN_C VOID( *KdpGetStateChange )(
     _Inout_ PCONTEXT                  Context
     );
 
+#if 0
+// See comment in kdapi.c
 EXTERN_C ULONG64( *KdpGetContext )(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PSTRING                   Body,
     _Inout_ PCONTEXT                  Context
     );
+#endif
 
 EXTERN_C BOOLEAN( *MmIsSessionAddress )(
     _In_ ULONG_PTR Address

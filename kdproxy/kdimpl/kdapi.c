@@ -20,7 +20,6 @@ KdpCopyMemoryChunks(
 }
 #endif
 
-
 KD_STATUS
 KdpReadVirtualMemory(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
@@ -65,7 +64,9 @@ KdpReadVirtualMemory(
     // MmNonPagedPoolStart, MmNonPagedPoolEnd
     //
 
-    if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ) {
+    if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
+        ( Packet->u.ReadMemory.TargetBaseAddress >= 0xFFFF8000'00000000 &&
+          Packet->u.ReadMemory.TargetBaseAddress <= 0xFFFFA000'00000000 ) ) {
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Body->Length = 0;
@@ -130,16 +131,18 @@ KdpWriteVirtualMemory(
     else {
         Packet->ReturnStatus = STATUS_SUCCESS;
         __try {
+            __writecr0( __readcr0( ) & ~0x10000 );
             memcpy( ( void* )Packet->u.WriteMemory.TargetBaseAddress,
                     Body->Buffer,
                     Body->Length );
             Packet->u.WriteMemory.TransferCount = ( unsigned int )Body->Length;
         }
         __except ( EXCEPTION_EXECUTE_HANDLER ) {
-
             Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
             Packet->u.WriteMemory.TransferCount = 0;
         }
+
+        __writecr0( __readcr0( ) | 0x10000 );
     }
 
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -151,6 +154,34 @@ KdpWriteVirtualMemory(
                                        NULL,
                                        &KdpContext );
 }
+
+KD_STATUS
+KdpGetContextApi(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+)
+{
+
+}
+
+KD_STATUS
+KdpGetContextEx(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+)
+{
+}
+
+#if 0
+
+//
+// These were what I was originally using for getting the context from
+// the Prcb, the problem was I didn't have the offset for this field
+// Fortunately, I realised KdDebuggerDataBlock.OffsetPrcbContext exists
+// and have chosen to re-write it.
+//
 
 KD_STATUS
 KdpGetContextApi(
@@ -228,6 +259,8 @@ KdpGetContextEx(
                                        Body,
                                        &KdpContext );
 }
+
+#endif
 
 KD_STATUS
 KdpSetContext(
@@ -585,7 +618,7 @@ KdpQueryMemory(
             Packet->u.QueryMemory.AddressSpace = UserSpace;
         }
 
-        DbgPrint( "%p -> D3DNIG_%s\n", Packet->u.QueryMemory.Address,
+        DbgPrint( "%p -> %s\n", Packet->u.QueryMemory.Address,
             ( ( char*[ ] ){ "UserSpace", "SessionSpace", "SystemSpace" } )[ Packet->u.QueryMemory.AddressSpace ] );
 
         Packet->u.QueryMemory.Flags = 7;

@@ -417,6 +417,7 @@ typedef struct _DBGKD_QUERY_MEMORY
 } DBGKD_QUERY_MEMORY, *PDBGKD_QUERY_MEMORY;
 
 C_ASSERT( FIELD_OFFSET( DBGKD_QUERY_MEMORY, Flags ) == 0x14 );
+C_ASSERT( FIELD_OFFSET( DBGKD_QUERY_MEMORY, AddressSpace ) == 0x10 );
 
 /* 1442 */
 typedef struct _DBGKD_SWITCH_PARTITION
@@ -723,9 +724,9 @@ C_ASSERT( FIELD_OFFSET( DBGKD_WAIT_STATE_CHANGE, CurrentThread ) == 16 );
 #define KD_PACKET_ID_RESET      0x80800000
 
 typedef enum _ADDRESS_SPACE {
-    SystemSpace,
-    SessionSpace,
-    UserSpace,
+    UserSpace    = 0,
+    SessionSpace = 1,
+    SystemSpace  = 2,
 } ADDRESS_SPACE;
 
 typedef struct _KD_SYMBOL_INFO {

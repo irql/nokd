@@ -235,12 +235,10 @@ KdpResendPacket:
                                       &Body,
                                       Context );
                     break;
-#if 0
                 case DbgKdSetContextApi:
                     KdpSetContext( &Packet,
                                    &Body );
                     break;
-#endif
                 case DbgKdWriteBreakPointApi:
                     KdpAddBreakpoint( &Packet,
                                       &Body );
