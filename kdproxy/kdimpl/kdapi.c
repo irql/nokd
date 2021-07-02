@@ -3,23 +3,6 @@
 
 ULONG32             KdTransportMaxPacketSize = 0xFA0; // 4000.
 
-#if 0
-KDAPI
-NTSTATUS
-KdpCopyMemoryChunks(
-    _In_      PVOID  Source,
-    _In_      PVOID  Destination,
-    _In_      ULONG  TotalLength,
-    _In_      ULONG  ChunkLength,
-    _In_      ULONG  Flags,
-    _Out_opt_ PULONG LengthRead
-)
-{
-
-
-}
-#endif
-
 KD_STATUS
 KdpReadVirtualMemory(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
@@ -155,50 +138,63 @@ KdpWriteVirtualMemory(
                                        &KdpContext );
 }
 
-KD_STATUS
-KdpGetContextApi(
+VOID
+KdpGetBaseContext(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PSTRING                   Body,
     _Inout_ PCONTEXT                  Context
 )
 {
+    ULONG32 Length;
 
+    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
+
+        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+    }
+
+    // This is actually 32 bytes higher. but is then lowered to sizeof(CONTEXT),
+    // if there's no CONTEXT_XSTATE.
+    Length = sizeof( CONTEXT );
+
+    if ( ( Context->ContextFlags & CONTEXT_XSTATE ) == CONTEXT_XSTATE ) {
+
+        // wont be set by me, so we don't really need to care.
+        Length = 0xFFFFFF;
+        //Length = SharedUserData->XState.Size + 0x320;
+    }
+
+    // why?    
+    //Length += 15;
+
+    if ( Length <= Body->MaximumLength ) {
+
+
+        RtlCopyMemory( Body->Buffer, Context, Length );
+        Body->Length = ( USHORT )Length;
+        Packet->ReturnStatus = STATUS_SUCCESS;
+    }
+    else {
+
+        Body->Length = 0;
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+    }
 }
 
 KD_STATUS
-KdpGetContextEx(
+KdpGetContext(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PSTRING                   Body,
     _Inout_ PCONTEXT                  Context
 )
 {
-}
+    STRING  Reciprocate;
 
-#if 0
+    KdpGetBaseContext( Packet, Body, Context );
 
-//
-// These were what I was originally using for getting the context from
-// the Prcb, the problem was I didn't have the offset for this field
-// Fortunately, I realised KdDebuggerDataBlock.OffsetPrcbContext exists
-// and have chosen to re-write it.
-//
-
-KD_STATUS
-KdpGetContextApi(
-    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body,
-    _Inout_ PCONTEXT                  Context
-)
-{
-    STRING Reciprocate;
-
-    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    KdpGetContext( Packet,
-                   Body,
-                   Context );
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,
                                        Body,
@@ -220,9 +216,7 @@ KdpGetContextEx(
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
-    KdpGetContext( Packet,
-                   Body,
-                   Context );
+    KdpGetBaseContext( Packet, Body, Context );
 
     Packet->u.GetContextEx.BytesCopied = 0;
 
@@ -260,23 +254,73 @@ KdpGetContextEx(
                                        &KdpContext );
 }
 
-#endif
-
 KD_STATUS
 KdpSetContext(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+)
+{
+    STRING Reciprocate;
+
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Buffer = ( PCHAR )Packet;
+
+    //
+    // They have the field Packet.u.SetContext.ContextFlags, but 
+    // it's not used or even referenced.
+    //
+
+    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
+
+        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+    }
+
+    RtlCopyMemory( Context, Body->Buffer, Body->Length );
+    Packet->ReturnStatus = STATUS_SUCCESS;
+
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
+}
+
+KD_STATUS
+KdpSetContextEx(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
 )
 {
 
+    STRING Reciprocate;
+
+    Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
+    Reciprocate.Buffer = ( PCHAR )Packet;
+
     //
-    // Same applies
+    // Windows use a global var as an intermediate buffer
+    // for the context.
+    //
+    // TODO: Basic range checks are done by windows.
     //
 
-    Packet;
-    Body;
+    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
 
-    return KdStatusSuccess;
+        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+    }
+
+    RtlCopyMemory( ( PCHAR )Context + Packet->u.SetContextEx.Offset,
+                   Body->Buffer, Packet->u.SetContextEx.ByteCount );
+    Packet->u.SetContextEx.BytesCopied = Packet->u.SetContextEx.ByteCount;
+    Packet->ReturnStatus = STATUS_SUCCESS;
+
+    return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
+                                       &Reciprocate,
+                                       NULL,
+                                       &KdpContext );
 }
 
 KD_STATUS

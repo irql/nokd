@@ -17,7 +17,7 @@ KdpWriteVirtualMemory(
 
 KDAPI
 KD_STATUS
-KdpGetContextApi(
+KdpGetContext(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PSTRING                   Body,
     _Inout_ PCONTEXT                  Context
@@ -42,7 +42,16 @@ KDAPI
 KD_STATUS
 KdpSetContext(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
+);
+
+KDAPI
+KD_STATUS
+KdpSetContextEx(
+    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
+    _Inout_ PSTRING                   Body,
+    _Inout_ PCONTEXT                  Context
 );
 
 KDAPI

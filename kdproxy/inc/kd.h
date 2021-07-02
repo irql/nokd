@@ -8,7 +8,7 @@
 // waiting functions either, and just causes general issues, especially
 // for debugging.
 //
-#define KD_DEBUG_NO_FREEZE      1
+#define KD_DEBUG_NO_FREEZE      0
 
 //
 // Haven't really tested the UART functionality, it was
@@ -95,6 +95,18 @@ MmCopyVirtualMemory(
     _In_  SIZE_T          Length,
     _In_  KPROCESSOR_MODE PreviousMode,
     _Out_ PSIZE_T         TransferLength
+);
+
+//
+// Great function I stumbled across when searching for a way
+// to acquire KiProcessorBlock, not defined in headers but it is 
+// exported, simply performs a `return KiProcessorBlock[ Processor ];`
+//
+// What a waste, KiProcessorBlock is on the KDDEBUGGER_DATA64 structure
+//
+ULONG_PTR
+KeQueryPrcbAddress(
+    _In_ ULONG32 Processor
 );
 
 //
@@ -327,15 +339,6 @@ EXTERN_C VOID( *KdpGetStateChange )(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PCONTEXT                  Context
     );
-
-#if 0
-// See comment in kdapi.c
-EXTERN_C ULONG64( *KdpGetContext )(
-    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body,
-    _Inout_ PCONTEXT                  Context
-    );
-#endif
 
 EXTERN_C BOOLEAN( *MmIsSessionAddress )(
     _In_ ULONG_PTR Address

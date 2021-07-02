@@ -231,13 +231,14 @@ KdpResendPacket:
                                            &Body );
                     break;
                 case DbgKdGetContextApi:
-                    KdpGetContextApi( &Packet,
-                                      &Body,
-                                      Context );
+                    KdpGetContext( &Packet,
+                                   &Body,
+                                   Context );
                     break;
                 case DbgKdSetContextApi:
                     KdpSetContext( &Packet,
-                                   &Body );
+                                   &Body,
+                                   Context );
                     break;
                 case DbgKdWriteBreakPointApi:
                     KdpAddBreakpoint( &Packet,
@@ -294,6 +295,11 @@ KdpResendPacket:
                     continue;
                 case DbgKdGetContextEx:
                     KdpGetContextEx( &Packet,
+                                     &Body,
+                                     Context );
+                    break;
+                case DbgKdSetContextEx:
+                    KdpSetContextEx( &Packet,
                                      &Body,
                                      Context );
                     break;

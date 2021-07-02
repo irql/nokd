@@ -47,28 +47,13 @@ PUSHORT KeProcessorLevel;
 // This function enables the TraceFlag if requested,
 // and sets the dr7 on all processors in the KiProcessorBlock
 //
+// After the realisation mentioned inside kdapi.c, this could 
+// easily be re-written.
+//
 VOID( *KdpGetStateChange )(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
     _Inout_ PCONTEXT                  Context
     );
-
-//
-// This function is responsible for getting some data off
-// the Prcb for freeze execution specific shit, 
-// which would be a pain for us, it also sometimes modifies
-// XSTATE area stuff depending on ContextFlags.
-// 
-// If the packet indicates that this isn't the current processor
-// then it will ignore the CONTEXT parameter and get it from the 
-// Prcb.
-//
-#if 0
-ULONG64( *KdpGetContext )(
-    _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
-    _Inout_ PSTRING                   Body,
-    _Inout_ PCONTEXT                  Context
-    );
-#endif
 
 //
 // Referenced inside KdpQueryMemory, to check if
@@ -183,7 +168,7 @@ KdBreakTimerDpcCallback(
 
         Context.EFlags = 2;
         Context.SegCs = ( USHORT )KdDebuggerDataBlock.GdtR0Code;
-        Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+        Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Pcr;
         Context.SegFs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
         Context.SegEs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
         Context.SegDs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
@@ -229,6 +214,11 @@ KdDebugThreadProcedure(
 
             DbgPrint( "KdDebugThreadProcedure broke in.\n" );
 
+            //
+            // This is extremely buggy, most of the time, because of the nature
+            // of kd's context management & it's strong relationship with the prcb, 
+            // freeze/thaw execution apis.
+            //
 #if 1
             Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
             Context.Rsp = 0;
@@ -321,7 +311,6 @@ KdDriverLoad(
     ULONG_PTR          KdpSysWriteControlSpaceAddress;
     ULONG_PTR          KdpGetStateChangeAddress;
     ULONG_PTR          KeProcessorLevelAddress;
-    //ULONG_PTR          KdpGetContextAddress;
     ULONG_PTR          KdDecodeDataBlockAddress;
     ULONG_PTR          MmIsSessionAddressAddress;
     PKDDEBUGGER_DATA64 KdDebuggerDataBlockDefault;
@@ -503,21 +492,7 @@ KdDriverLoad(
     KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + *( LONG32* )( KeProcessorLevelAddress + 6 ) );
 
     DbgPrint( "KeProcessorLevel: %p\n", KeProcessorLevel );
-#if 0
-    KdpGetContextAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionPageKdBase ),
-                                                           SectionPageKdSize,
-                                                           "E8 ? ? ? ? 44 39 75 EF" );
 
-    if ( KdpGetContextAddress == 0 ) {
-
-        DbgPrint( "KdpGetContext not found\n" );
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    KdpGetContext = ( PVOID )( KdpGetContextAddress + 5 + *( LONG32* )( KdpGetContextAddress + 1 ) );
-
-    DbgPrint( "KdpGetContext: %p\n", KdpGetContext );
-#endif
     KdDecodeDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionTextBase ),
                                                                SectionTextSize,
                                                                "E8 ? ? ? ? 48 8B 45 88 4C 8D 9D ? ? ? ? " );
@@ -645,6 +620,9 @@ KdDriverLoad(
     //
     // This field is set to KdpLoaderDebuggerBlock, which is freed before it's even possible to break-in,
     // KdpLoaderDebuggerBlock is zeroed at the end of KdInitSystem.
+    //
+    // TODO: Potentially, set the MaxBreakpoints and MaxWatchpoints, I'm not sure
+    //       where they're referenced or used inside dbgeng, but might be more safe.
     //
     KdDebuggerDataBlock.KeLoaderBlock = ( ULONG64 )&KdpLoaderDebuggerBlock;
 
