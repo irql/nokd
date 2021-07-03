@@ -152,16 +152,15 @@ KdBreakTimerDpcCallback(
     //
     //
 
-    //KeCancelTimer( &KdBreakTimer );
-
-    BOOLEAN                 Interrupts;
+    BOOLEAN                 IntState;
     STRING                  Head;
     DBGKD_WAIT_STATE_CHANGE Exception = { 0 };
     CONTEXT                 Context = { 0 };
+    LARGE_INTEGER           DueTime;
 
     if ( KdPollBreakIn( ) ) {
 
-        Interrupts = KeFreezeExecution( );
+        IntState = KdEnterDebugger( );
 
         Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
         Context.Rsp = 0;
@@ -183,15 +182,18 @@ KdBreakTimerDpcCallback(
 
         Exception.u.Exception.FirstChance = TRUE;
         Exception.u.Exception.ExceptionRecord.ExceptionCode = STATUS_BREAKPOINT;
-        Exception.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
-
+        Exception.u.Exception.ExceptionRecord.ExceptionAddress = Context.Rip;
 
         KdpSendWaitContinue( 0,
                              &Head,
                              NULL,
                              &Context );
-        KeThawExecution( ( BOOLEAN )Interrupts );
+
+        KdExitDebugger( IntState );
     }
+
+    DueTime.QuadPart = -10000000;
+    KeSetTimer( &KdBreakTimer, DueTime, &KdBreakDpc );
 }
 
 #if KD_DEBUG_NO_FREEZE
@@ -200,9 +202,6 @@ KdDebugThreadProcedure(
 
 )
 {
-    //
-    //
-    //
 
     STRING                  Head;
     DBGKD_WAIT_STATE_CHANGE Exception = { 0 };
@@ -240,7 +239,7 @@ KdDebugThreadProcedure(
 
             Exception.u.Exception.FirstChance = TRUE;
             Exception.u.Exception.ExceptionRecord.ExceptionCode = STATUS_BREAKPOINT;
-            Exception.u.Exception.ExceptionRecord.ExceptionAddress = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
+            Exception.u.Exception.ExceptionRecord.ExceptionAddress = Context.Rip;
 
             KdpSendWaitContinue( 0,
                                  &Head,
@@ -314,7 +313,9 @@ KdDriverLoad(
     ULONG_PTR          KdDecodeDataBlockAddress;
     ULONG_PTR          MmIsSessionAddressAddress;
     PKDDEBUGGER_DATA64 KdDebuggerDataBlockDefault;
+#if !(KD_DEBUG_NO_FREEZE)
     LARGE_INTEGER      DueTime;
+#endif
 
     //
     //////////////////////////////////////////////////////////////////////
@@ -636,16 +637,8 @@ KdDriverLoad(
     KdVersionBlock.Flags |= 1;
 
     KdVersionBlock.DebuggerDataList = ( ULONG64 )&KdpDebuggerDataListHead;
-    KdVersionBlock.PsLoadedModuleList = KdDebuggerDataBlock.PsLoadedModuleList;//( ULONG64 )PsLoadedModuleList;
-    KdVersionBlock.KernBase = KdDebuggerDataBlock.KernBase;//( ULONG64 )ImageBase;
-
-    KeInitializeDpc( &KdBreakDpc,
-        ( PKDEFERRED_ROUTINE )KdBreakTimerDpcCallback,
-                     NULL );
-
-    KeInitializeTimerEx( &KdBreakTimer, NotificationTimer );
-
-    DueTime.QuadPart = -10000000;
+    KdVersionBlock.PsLoadedModuleList = KdDebuggerDataBlock.PsLoadedModuleList;
+    KdVersionBlock.KernBase = KdDebuggerDataBlock.KernBase;
 
     //
     // When kd breaks in there are some reads which I've logged here in a list.
@@ -676,8 +669,11 @@ KdDriverLoad(
 
     KdPrint( KD_STARTUP_SIG );
 
-    KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
+    //
+    // If you set breakpoint on start, then you may break-in here.
+    //
 
+    KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
 
 #if KD_DEBUG_NO_FREEZE
 
@@ -699,9 +695,17 @@ KdDriverLoad(
 
 #else
 
-    KeSetTimerEx( &KdBreakTimer, DueTime, 1000, &KdBreakDpc );
+    KeInitializeDpc( &KdBreakDpc,
+        ( PKDEFERRED_ROUTINE )KdBreakTimerDpcCallback,
+                     NULL );
+
+    KeInitializeTimerEx( &KdBreakTimer, NotificationTimer );
+
+    DueTime.QuadPart = -10000000;
+
+    KeSetTimer( &KdBreakTimer, DueTime, &KdBreakDpc );
 
 #endif
 
     return STATUS_SUCCESS;
-}
+    }

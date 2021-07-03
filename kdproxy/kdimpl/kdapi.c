@@ -73,7 +73,7 @@ KdpReadVirtualMemory(
         }
     }
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 #if 1
@@ -112,9 +112,16 @@ KdpWriteVirtualMemory(
         Packet->u.WriteMemory.TransferCount = 0;
     }
     else {
+        //
+        // Currently, not bothered to make this HVCI compliant,
+        // it's very easy to setup some PTE mechanism, similar
+        // to MmDbg.
+        //
+
         Packet->ReturnStatus = STATUS_SUCCESS;
+        __writecr0( __readcr0( ) & ~0x10000 );
+
         __try {
-            __writecr0( __readcr0( ) & ~0x10000 );
             memcpy( ( void* )Packet->u.WriteMemory.TargetBaseAddress,
                     Body->Buffer,
                     Body->Length );
@@ -367,7 +374,7 @@ KdpReadControlSpace(
     }
     Body->Length = ( USHORT )ReadCount;
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -391,7 +398,7 @@ KdpWriteControlSpace(
                                                     Body->Length,
                                                     ( PULONG )&Packet->u.WriteMemory.ActualBytesWritten );
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -446,7 +453,7 @@ KdpReadIoSpace(
         break;
     }
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -501,7 +508,7 @@ KdpWriteIoSpace(
         break;
     }
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -519,24 +526,52 @@ KdpReadPhysicalMemory(
 {
     STRING Reciprocate;
     SIZE_T ReadCount;
+    PVOID  Buffer;
 
     ReadCount = Packet->u.ReadMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
     ReadCount = min( Body->MaximumLength, ReadCount );
-
+#if 0
     Packet->ReturnStatus = MmCopyMemory( Body->Buffer,
         ( PVOID )Packet->u.ReadMemory.TargetBaseAddress,
                                          ReadCount,
                                          MM_COPY_ADDRESS_PHYSICAL,
                                          &ReadCount );
+#endif
+
+    Buffer = MmMapIoSpace( *( PPHYSICAL_ADDRESS )&Packet->u.ReadMemory.TargetBaseAddress,
+                           ReadCount,
+                           MmCached );
+
+    if ( Buffer == NULL ) {
+
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        goto KdpProcedureDone;
+    }
+
+    __try {
+        memcpy( Body->Buffer,
+                Buffer,
+                Body->Length );
+        Packet->u.ReadMemory.TransferCount = ( unsigned int )Body->Length;
+        Packet->ReturnStatus = STATUS_SUCCESS;
+    }
+    __except ( EXCEPTION_EXECUTE_HANDLER ) {
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        Packet->u.ReadMemory.TransferCount = 0;
+    }
+
     Body->Length = ( USHORT )ReadCount;
     Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+    MmUnmapIoSpace( Buffer, ReadCount );
 
-    Reciprocate.MaximumLength = 0;
+KdpProcedureDone:
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
     if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
+
         DbgPrint( "failed to read physical memory: %p\n", Packet->u.ReadMemory.TargetBaseAddress );
     }
 
@@ -558,15 +593,16 @@ KdpWritePhysicalMemory(
     // however, the buffer is run length encoded.
     //
 
+
     STRING Reciprocate;
     SIZE_T ReadCount;
     PVOID  Buffer;
 
-    ReadCount = Packet->u.ReadMemory.TransferCount;
+    ReadCount = Packet->u.WriteMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
     ReadCount = min( Body->MaximumLength, ReadCount );
 
-    Buffer = MmMapIoSpace( *( PPHYSICAL_ADDRESS )&Packet->u.ReadMemory.TargetBaseAddress,
+    Buffer = MmMapIoSpace( *( PPHYSICAL_ADDRESS )&Packet->u.WriteMemory.TargetBaseAddress,
                            ReadCount,
                            MmCached );
 
@@ -576,23 +612,37 @@ KdpWritePhysicalMemory(
         goto KdpProcedureDone;
     }
 
+#if 0
     Packet->ReturnStatus = MmCopyMemory( Buffer,
                                          Body->Buffer,
                                          ReadCount,
-                                         MM_COPY_ADDRESS_PHYSICAL,
+                                         MM_COPY_ADDRESS_VIRTUAL,
                                          &ReadCount );
-    Body->Length = ( USHORT )ReadCount;
-    Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+#endif
+
+    __try {
+        memcpy( Buffer,
+                Body->Buffer,
+                Body->Length );
+        Packet->u.WriteMemory.TransferCount = ( unsigned int )Body->Length;
+        Packet->ReturnStatus = STATUS_SUCCESS;
+    }
+    __except ( EXCEPTION_EXECUTE_HANDLER ) {
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        Packet->u.WriteMemory.TransferCount = 0;
+    }
+
+    Packet->u.WriteMemory.ActualBytesWritten = ( unsigned int )ReadCount;
     MmUnmapIoSpace( Buffer, ReadCount );
 
 KdpProcedureDone:
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,
-                                       Body,
+                                       NULL,
                                        &KdpContext );
 
 }
@@ -610,7 +660,7 @@ KdpGetVersion(
     Packet->u.GetVersion64 = KdVersionBlock;
     Packet->ReturnStatus = STATUS_SUCCESS;
 
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 

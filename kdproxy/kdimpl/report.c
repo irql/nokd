@@ -94,14 +94,14 @@ KdReportLoaded(
     KD_SYMBOL_INFO SymbolInfo;
     CONTEXT        Context = { 0 };
     STRING         PathName;
+    BOOLEAN        IntState;
 
-    Context.ContextFlags = CONTEXT_AMD64 | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
     Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
     Context.Rsp = 0;
 
     Context.EFlags = 2;
     Context.SegCs = ( USHORT )KdDebuggerDataBlock.GdtR0Code;
-    Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
+    Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Pcr;
     Context.SegFs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
     Context.SegEs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
     Context.SegDs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
@@ -120,10 +120,15 @@ KdReportLoaded(
 
     RtlInitString( &PathName, ImageName );
 
-    return KdpReportLoadSymbolsStateChange( &PathName,
-                                            &SymbolInfo,
-                                            FALSE,
-                                            &Context ) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+    IntState = KdEnterDebugger( );
+
+    ntStatus = KdpReportLoadSymbolsStateChange( &PathName,
+                                                &SymbolInfo,
+                                                FALSE,
+                                                &Context ) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+    KdExitDebugger( IntState );
+
+    return ntStatus;
 }
 
 //

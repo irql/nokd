@@ -207,7 +207,7 @@ KdpAddBreakpoint(
     KdpBreakpointTable[ BreakpointHandle ].Flags |= KD_BPE_SET;
 
 KdpProcedureDone:
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 
@@ -234,6 +234,12 @@ KdpDeleteBreakpoint(
 
     BreakpointHandle = Packet->u.RestoreBreakPoint.BreakPointHandle;
 
+    if ( BreakpointHandle >= KD_BREAKPOINT_TABLE_LENGTH ) {
+
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        goto KdpProcedureDone;
+    }
+
     if ( ( KdpBreakpointTable[ BreakpointHandle ].Flags & KD_BPE_SET ) == 0 ) {
 
         Packet->ReturnStatus = STATUS_SUCCESS;
@@ -252,7 +258,7 @@ KdpDeleteBreakpoint(
     KeUnstackDetachProcess( &ApcState );
 
 KdpProcedureDone:
-    Reciprocate.MaximumLength = 0;
+    Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
 

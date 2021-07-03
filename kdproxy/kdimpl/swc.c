@@ -30,10 +30,15 @@ KdpSetCommonState(
 {
     SIZE_T InstructionCount;
 
+    //
+    // TODO: This procedure also deletes the breakpoint range at
+    //       the context's rip.
+    //
+
     Change->ApiNumber = ApiNumber;
     Change->Processor = ( USHORT )KeGetCurrentProcessorNumber( );
     Change->ProcessorCount = KeQueryActiveProcessorCountEx( 0xFFFF );
-    if ( Change->Processor <= Change->ProcessorCount ) {
+    if ( Change->ProcessorCount <= Change->Processor ) {
 
         Change->ProcessorCount = Change->Processor + 1;
     }
@@ -44,11 +49,22 @@ KdpSetCommonState(
 
     RtlZeroMemory( &Change->ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
 
+#if 0
     MmCopyMemory( Change->ControlReport.InstructionStream,
         ( PVOID )Context->Rip,
                   0x10,
                   MM_COPY_ADDRESS_VIRTUAL,
                   &InstructionCount );
+#endif
+
+    __try {
+        RtlCopyMemory( Change->ControlReport.InstructionStream, ( PVOID )Context->Rip, 0x10 );
+        InstructionCount = 0x10;
+    }
+    __except ( EXCEPTION_EXECUTE_HANDLER ) {
+
+        InstructionCount = 0;
+    }
     Change->ControlReport.InstructionCount = ( USHORT )InstructionCount;
 }
 
@@ -73,8 +89,8 @@ KdpSetContextState(
     Change->ControlReport.EFlags = Context->EFlags;
     Change->ControlReport.ReportFlags = 1;
 
-    if ( Context->SegCs == KdDebuggerDataBlock.GdtR0Code ||
-         Context->SegCs == KdDebuggerDataBlock.GdtR3Code ) {
+    if ( Context->SegCs == 0x10 ||//KdDebuggerDataBlock.GdtR0Code ||
+         Context->SegCs == 0x33 ) {//KdDebuggerDataBlock.GdtR3Code ) {
 
         Change->ControlReport.ReportFlags = 0x3;
     }
@@ -267,6 +283,13 @@ KdpResendPacket:
                                      &Body );
                     break;
                 case DbgKdRebootApi:
+                case DbgKdCauseBugCheckApi:
+
+                    //
+                    // Set the nig mode. 
+                    //
+
+                    KeBugCheck( D3DNIG_MAXIMUM );
                     break;
                 case DbgKdContinueApi2:
                     if ( !NT_SUCCESS( Packet.u.Continue.ContinueStatus ) ) {
@@ -306,6 +329,9 @@ KdpResendPacket:
                 case DbgKdQueryMemoryApi:
                     KdpQueryMemory( &Packet,
                                     &Body );
+                    break;
+                case DbgKdSwitchProcessor:
+                    KeSwitchFrozenProcessor( Packet.Processor );
                     break;
                 default:
                     DbgPrint( "KdApiNumber unhandled: %#.4lx\n", Packet.ApiNumber );

@@ -109,6 +109,9 @@ KeQueryPrcbAddress(
     _In_ ULONG32 Processor
 );
 
+#define STATIC      static
+#define VOLATILE    volatile
+
 //
 // DBGKD structures which are mostly
 // message headers, and other general 
@@ -291,6 +294,16 @@ KdBpContextStore(
 VOID
 KdBpContextRestore(
 
+);
+
+BOOLEAN
+KdEnterDebugger(
+
+);
+
+VOID
+KdExitDebugger(
+    _In_ BOOLEAN IntState
 );
 
 //
