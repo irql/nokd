@@ -158,6 +158,8 @@ KdBreakTimerDpcCallback(
     CONTEXT                 Context = { 0 };
     LARGE_INTEGER           DueTime;
 
+    KdPrint( "KdBreakDpc executed on processor: %d\n", KeGetCurrentProcessorNumber( ) );
+
     if ( KdPollBreakIn( ) ) {
 
         IntState = KdEnterDebugger( );
@@ -708,4 +710,4 @@ KdDriverLoad(
 #endif
 
     return STATUS_SUCCESS;
-    }
+}

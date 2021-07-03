@@ -96,7 +96,7 @@ KdReportLoaded(
     STRING         PathName;
     BOOLEAN        IntState;
 
-    Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
+    Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus + 1;
     Context.Rsp = 0;
 
     Context.EFlags = 2;
