@@ -109,6 +109,42 @@ KeQueryPrcbAddress(
     _In_ ULONG32 Processor
 );
 
+typedef struct _KAFFINITY_EX {
+    //
+    // This structure is taken from my 21354 build of windows, geoffchappel
+    // documents the structure pretty well, although the size is incorrect
+    // it's now 32 AFFINITY masks. KiMaximumGroups defines this value.
+    //
+    // References: HalpNmiReboot, KeFreezeExecution -> KiSendFreeze
+    //
+    // When used alongside HalSendNMI, the following sequence of operations
+    // is performed.
+    //
+    // AffinityEx.Count = 1;
+    // AffinityEx.Size = 0x20;
+    // RtlZeroMemory( &AffinityEx->Reserved, sizeof( KAFFINITY_EX ) - 4 );
+    // KiCopyAffinityEx( &AffinityEx, 0x20, &KeActiveProcessors );
+    // KeRemoveProcessorAffinityEx( &AffinityEx, KeGetCurrentProcessorNumber( ) );
+    // HalSendNMI( &AffinityEx );
+    //
+    // NOTE: KeQueryGroupAffinity is a direct ref to any 
+    // of the processors in any group under KeActiveProcessors.Bitmap
+    //
+
+    USHORT    Count;
+    USHORT    Size;
+    ULONG     Reserved;
+    KAFFINITY Bitmap[ 32 ];
+
+} KAFFINITY_EX, *PKAFFINITY_EX;
+
+C_ASSERT( sizeof( KAFFINITY_EX ) == 0x108 );
+
+VOID
+HalSendNMI(
+    _In_ PKAFFINITY_EX Affinity
+);
+
 #define STATIC      static
 #define VOLATILE    volatile
 
@@ -206,6 +242,22 @@ typedef enum _D3DNIGMODE {
 } D3DNIGMODE, *PD3DNIGMODE;
 
 //
+// Type for Process->DirectoryTableBase.
+//
+
+typedef ULONG_PTR KADDRESS_SPACE, *PKADDRESS_SPACE;
+
+//
+// ServiceNumbers for KdServiceInterrupt
+//
+
+typedef enum _KD_SERVICE_NUMBER {
+    KdServiceStateChangeSymbol,
+    KdServiceStateChangeExcept,
+    KdServiceStateChange
+} KD_SERVICE_NUMBER, *PKD_SERVICE_NUMBER;
+
+//
 // definitions for kdapi, which are 
 // used per KD_API_NUMBER, declared
 // inside kdimpl.
@@ -274,6 +326,13 @@ KdpReportLoadSymbolsStateChange(
     _Inout_ PCONTEXT        Context
 );
 
+BOOLEAN
+KdReportLoadSymbolsStateChange(
+    _In_    PSTRING         PathName,
+    _In_    PKD_SYMBOL_INFO Symbol,
+    _In_    BOOLEAN         Unload
+);
+
 NTSTATUS
 KdReportLoaded(
     _In_ PCHAR ImageName,
@@ -286,24 +345,104 @@ KdPrint(
     _In_ ...
 );
 
-VOID
-KdBpContextStore(
-
-);
-
-VOID
-KdBpContextRestore(
+ULONG_PTR
+KeGetCurrentPrcb(
 
 );
 
 BOOLEAN
-KdEnterDebugger(
+KdServiceInterrupt(
+    _In_ PVOID   Context,
+    _In_ BOOLEAN Handled
+);
+
+NTSTATUS
+KdFreezeLoad(
 
 );
 
 VOID
-KdExitDebugger(
-    _In_ BOOLEAN IntState
+KdFreezeUnload(
+
+);
+
+VOID
+KdDebugBreak(
+
+);
+
+VOID
+KdNmiBp(
+
+);
+
+ULONG
+KdNmiServiceBp(
+    _In_ ULONG ServiceNumber,
+    _In_ PVOID Arg1,
+    _In_ PVOID Arg2,
+    _In_ PVOID Arg3,
+    _In_ PVOID Arg4
+);
+
+VOID
+KdFreezeProcessors(
+
+);
+
+VOID
+KdThawProcessors(
+
+);
+
+VOID
+KdSwitchFrozenProcessor(
+    _In_ ULONG32 NewProcessor
+);
+
+BOOLEAN
+KdpReportExceptionStateChange(
+    _In_ PEXCEPTION_RECORD64 ExceptRecord,
+    _In_ PCONTEXT            ExceptContext,
+    _In_ BOOLEAN             SecondChance
+);
+
+KADDRESS_SPACE
+KdGetProcessSpace(
+    _In_ PEPROCESS Process
+);
+
+KADDRESS_SPACE
+KdSetSpace(
+    _In_ KADDRESS_SPACE AddressSpace
+);
+
+NTSTATUS
+KdCopyProcessSpace(
+    _In_ PEPROCESS Process,
+    _In_ PVOID     Destination,
+    _In_ PVOID     Source,
+    _In_ ULONG     Length
+);
+
+ULONG32
+KdGetPrcbNumber(
+    _In_ ULONG_PTR Prcb
+);
+
+ULONG32
+KdGetCurrentPrcbNumber(
+
+);
+
+PCONTEXT
+KdGetPrcbContext(
+    _In_ ULONG_PTR Prcb
+);
+
+PCONTEXT
+KdGetCurrentPrcbContext(
+
 );
 
 //
@@ -333,19 +472,19 @@ EXTERN_C PVOID( *MmGetPagedPoolCommitPointer )(
     );
 
 EXTERN_C NTSTATUS( *KdpSysReadControlSpace )(
-    _In_  ULONG  Processor,
-    _In_  ULONG  Address,
-    _In_  PVOID  Buffer,
-    _In_  ULONG  Length,
-    _Out_ PULONG TransferLength
+    _In_  ULONG   Processor,
+    _In_  ULONG64 Address,
+    _In_  PVOID   Buffer,
+    _In_  ULONG   Length,
+    _Out_ PULONG  TransferLength
     );
 
 EXTERN_C NTSTATUS( *KdpSysWriteControlSpace )(
-    _In_  ULONG  Processor,
-    _In_  ULONG  Address,
-    _In_  PVOID  Buffer,
-    _In_  ULONG  Length,
-    _Out_ PULONG TransferLength
+    _In_  ULONG   Processor,
+    _In_  ULONG64 Address,
+    _In_  PVOID   Buffer,
+    _In_  ULONG   Length,
+    _Out_ PULONG  TransferLength
     );
 
 EXTERN_C VOID( *KdpGetStateChange )(

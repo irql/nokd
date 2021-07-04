@@ -63,6 +63,20 @@ KdpReportLoadSymbolsStateChange(
                                 Context );
 }
 
+BOOLEAN
+KdReportLoadSymbolsStateChange(
+    _In_    PSTRING         PathName,
+    _In_    PKD_SYMBOL_INFO Symbol,
+    _In_    BOOLEAN         Unload
+)
+{
+    return ( BOOLEAN )KdNmiServiceBp( KdServiceStateChangeSymbol,
+        ( PVOID )PathName,
+                                      ( PVOID )Symbol,
+                                      ( PVOID )Unload,
+                                      NULL );
+}
+
 //
 // This purely exists for us to load any module 
 // on demand, because of the way the DebugService works
@@ -90,22 +104,18 @@ KdReportLoaded(
     _In_ PCHAR ImagePath
 )
 {
+    //
+    // TODO: This should probably do something
+    //       similar to DebugService, in the sense that
+    //       we need a proper CONTEXT structure, in case
+    //       the debugger breaks-in. Switch processor
+    //       will probably crash the system in such
+    //       a state.
+    //
+
     NTSTATUS       ntStatus;
     KD_SYMBOL_INFO SymbolInfo;
-    CONTEXT        Context = { 0 };
     STRING         PathName;
-    BOOLEAN        IntState;
-
-    Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus + 1;
-    Context.Rsp = 0;
-
-    Context.EFlags = 2;
-    Context.SegCs = ( USHORT )KdDebuggerDataBlock.GdtR0Code;
-    Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Pcr;
-    Context.SegFs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-    Context.SegEs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-    Context.SegDs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-    Context.ContextFlags = CONTEXT_AMD64 | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
 
     ntStatus = KdImageAddress( ImagePath,
         ( PVOID* )&SymbolInfo.BaseAddress,
@@ -120,15 +130,9 @@ KdReportLoaded(
 
     RtlInitString( &PathName, ImageName );
 
-    IntState = KdEnterDebugger( );
-
-    ntStatus = KdpReportLoadSymbolsStateChange( &PathName,
-                                                &SymbolInfo,
-                                                FALSE,
-                                                &Context ) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
-    KdExitDebugger( IntState );
-
-    return ntStatus;
+    return KdReportLoadSymbolsStateChange( &PathName,
+                                           &SymbolInfo,
+                                           FALSE ) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 //
@@ -192,4 +196,31 @@ KdPrint(
     String.Buffer = ( PCHAR )Buffer;
 
     KdpPrintString( &String );
+}
+
+BOOLEAN
+KdpReportExceptionStateChange(
+    _In_ PEXCEPTION_RECORD64 ExceptRecord,
+    _In_ PCONTEXT            ExceptContext,
+    _In_ BOOLEAN             SecondChance
+)
+{
+    STRING Head;
+    DBGKD_WAIT_STATE_CHANGE State = { 0 };
+
+    KdpSetCommonState( 0x3030, ExceptContext, &State );
+    RtlCopyMemory( &State.u.Exception.ExceptionRecord,
+                   ExceptRecord,
+                   sizeof( EXCEPTION_RECORD64 ) );
+    State.u.Exception.FirstChance = !SecondChance;
+    KdpSetContextState( &State, ExceptContext );
+
+    Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
+    Head.MaximumLength = sizeof( DBGKD_WAIT_STATE_CHANGE );
+    Head.Buffer = ( PCHAR )&State;
+
+    return KdpSendWaitContinue( D3DNIG_NONE,
+                                &Head,
+                                NULL,
+                                ExceptContext );
 }

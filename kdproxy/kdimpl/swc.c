@@ -289,7 +289,7 @@ KdpResendPacket:
                     // Set the nig mode. 
                     //
 #if !(KD_DEBUG_NO_FREEZE)
-                    KdExitDebugger( FALSE );
+                    KdThawProcessors( );
 #endif
 
                     KeBugCheck( D3DNIG_MAXIMUM );
@@ -340,12 +340,15 @@ KdpResendPacket:
                         goto KdpResendPacket;
                     }
 
-                    KeSetTargetProcessorDpc( &KdBreakDpc, ( CCHAR )Packet.Processor );
-                    KeInsertQueueDpc( &KdBreakDpc, NULL, NULL );
+                    //KeSetTargetProcessorDpc( &KdBreakDpc, ( CCHAR )Packet.Processor );
+                    //KeInsertQueueDpc( &KdBreakDpc, NULL, NULL );
 
-                    KeSwitchFrozenProcessor( Packet.Processor );
+                    //KeSwitchFrozenProcessor( Packet.Processor );
 
-                    while ( 1 );
+                    //while ( 1 );
+
+                    KdSwitchFrozenProcessor( Packet.Processor );
+                    return TRUE;
                 default:
                     DbgPrint( "KdApiNumber unhandled: %#.4lx\n", Packet.ApiNumber );
                     Packet.ReturnStatus = STATUS_UNSUCCESSFUL;

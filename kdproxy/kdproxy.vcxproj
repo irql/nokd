@@ -156,6 +156,8 @@
     <ClCompile Include="init.c" />
     <ClCompile Include="kdimpl\kdapi.c" />
     <ClCompile Include="kdimpl\kdbp.c" />
+    <ClCompile Include="kdimpl\kdmem.c" />
+    <ClCompile Include="kdimpl\pt.c" />
     <ClCompile Include="kdimpl\report.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="kdimpl\swc.c" />
@@ -172,7 +174,8 @@
   </ItemGroup>
   <ItemGroup>
     <MASM Include="communic\vmwrpc64.asm" />
-    <MASM Include="kdimpl\bp.asm" />
+    <MASM Include="kdimpl\nmibp.asm" />
+    <MASM Include="prcb.asm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

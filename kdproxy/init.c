@@ -26,19 +26,19 @@ PVOID( *MmGetPagedPoolCommitPointer )(
     );
 
 NTSTATUS( *KdpSysReadControlSpace )(
-    _In_  ULONG  Processor,
-    _In_  ULONG  Address,
-    _In_  PVOID  Buffer,
-    _In_  ULONG  Length,
-    _Out_ PULONG TransferLength
+    _In_  ULONG   Processor,
+    _In_  ULONG64 Address,
+    _In_  PVOID   Buffer,
+    _In_  ULONG   Length,
+    _Out_ PULONG  TransferLength
     );
 
 NTSTATUS( *KdpSysWriteControlSpace )(
-    _In_  ULONG  Processor,
-    _In_  ULONG  Address,
-    _In_  PVOID  Buffer,
-    _In_  ULONG  Length,
-    _Out_ PULONG TransferLength
+    _In_  ULONG   Processor,
+    _In_  ULONG64 Address,
+    _In_  PVOID   Buffer,
+    _In_  ULONG   Length,
+    _Out_ PULONG  TransferLength
     );
 
 PUSHORT KeProcessorLevel;
@@ -152,46 +152,13 @@ KdBreakTimerDpcCallback(
     //
     //
 
-    BOOLEAN                 IntState;
-    STRING                  Head;
-    DBGKD_WAIT_STATE_CHANGE Exception = { 0 };
-    CONTEXT                 Context = { 0 };
     LARGE_INTEGER           DueTime;
 
-    KdPrint( "KdBreakDpc executed on processor: %d\n", KeGetCurrentProcessorNumber( ) );
+    //KdPrint( "KdBreakDpc executed on processor: %d\n", KeGetCurrentProcessorNumber( ) );
 
     if ( KdPollBreakIn( ) ) {
 
-        IntState = KdEnterDebugger( );
-
-        Context.Rip = ( ULONG64 )KdDebuggerDataBlock.BreakpointWithStatus;
-        Context.Rsp = 0;
-
-        Context.EFlags = 2;
-        Context.SegCs = ( USHORT )KdDebuggerDataBlock.GdtR0Code;
-        Context.SegGs = ( USHORT )KdDebuggerDataBlock.GdtR0Pcr;
-        Context.SegFs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-        Context.SegEs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-        Context.SegDs = ( USHORT )KdDebuggerDataBlock.GdtR0Data;
-        Context.ContextFlags = CONTEXT_AMD64 | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
-
-        Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );
-        Head.MaximumLength = sizeof( DBGKD_WAIT_STATE_CHANGE );
-        Head.Buffer = ( PCHAR )&Exception;
-
-        KdpSetCommonState( 0x3030, &Context, &Exception );
-        KdpSetContextState( &Exception, &Context );
-
-        Exception.u.Exception.FirstChance = TRUE;
-        Exception.u.Exception.ExceptionRecord.ExceptionCode = STATUS_BREAKPOINT;
-        Exception.u.Exception.ExceptionRecord.ExceptionAddress = Context.Rip;
-
-        KdpSendWaitContinue( 0,
-                             &Head,
-                             NULL,
-                             &Context );
-
-        KdExitDebugger( IntState );
+        KdDebugBreak( );
     }
 
     DueTime.QuadPart = -10000000;
@@ -283,6 +250,8 @@ KdDriverUnload(
 #else
     KeCancelTimer( &KdBreakTimer );
 #endif
+
+    KdFreezeUnload( );
 
 }
 
@@ -662,6 +631,11 @@ KdDriverLoad(
     // nt!_NULL_IMPORT_DESCRIPTOR <PERF> (nt+0x13f00c) 128
     // 
     //
+
+    if ( !NT_SUCCESS( KdFreezeLoad( ) ) ) {
+
+        return STATUS_UNSUCCESSFUL;
+    }
 
     //
     // Gotta print our big ass ascii text of "nokd" after

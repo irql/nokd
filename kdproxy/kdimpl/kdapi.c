@@ -3,6 +3,39 @@
 
 ULONG32             KdTransportMaxPacketSize = 0xFA0; // 4000.
 
+ULONG32
+KdGetPrcbNumber(
+    _In_ ULONG_PTR Prcb
+)
+{
+    // It's safe to assume Prcb + 0x24 / Pcr + 0x1A4
+    return *( ULONG32* )( Prcb + KdDebuggerDataBlock.OffsetPrcbNumber );
+}
+
+ULONG32
+KdGetCurrentPrcbNumber(
+
+)
+{
+    return KdGetPrcbNumber( KeGetCurrentPrcb( ) );
+}
+
+PCONTEXT
+KdGetPrcbContext(
+    _In_ ULONG_PTR Prcb
+)
+{
+    return *( PCONTEXT* )( Prcb + KdDebuggerDataBlock.OffsetPrcbContext );
+}
+
+PCONTEXT
+KdGetCurrentPrcbContext(
+
+)
+{
+    return KdGetPrcbContext( KeGetCurrentPrcb( ) );
+}
+
 KD_STATUS
 KdpReadVirtualMemory(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
@@ -16,8 +49,9 @@ KdpReadVirtualMemory(
     // address, though this is unreferenced.
     //
 
-    STRING Reciprocate;
-    SIZE_T ReadCount;
+    STRING  Reciprocate;
+    SIZE_T  ReadCount;
+    BOOLEAN Smap;
 
     ReadCount = Packet->u.ReadMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
@@ -47,9 +81,15 @@ KdpReadVirtualMemory(
     // MmNonPagedPoolStart, MmNonPagedPoolEnd
     //
 
+    Smap = ( BOOLEAN )( ( __readeflags( ) >> 18 ) & 1 );
+
+    if ( Smap ) {
+
+        __writeeflags( __readeflags( ) & ~0x40000 );
+    }
+
     if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
-        ( Packet->u.ReadMemory.TargetBaseAddress >= 0xFFFF8000'00000000 &&
-          Packet->u.ReadMemory.TargetBaseAddress <= 0xFFFFA000'00000000 ) ) {
+         !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Body->Length = 0;
@@ -71,6 +111,11 @@ KdpReadVirtualMemory(
             Body->Length = 0;
             Packet->u.ReadMemory.ActualBytesRead = 0;
         }
+    }
+
+    if ( Smap ) {
+
+        __writeeflags( ( ULONG64 )Smap << 18 );
     }
 
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -154,9 +199,9 @@ KdpGetBaseContext(
 {
     ULONG32 Length;
 
-    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
+    if ( Packet->Processor != KdGetCurrentPrcbNumber( ) ) {
 
-        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+        Context = KdGetPrcbContext( KeQueryPrcbAddress( Packet->Processor ) );
     }
 
     // This is actually 32 bytes higher. but is then lowered to sizeof(CONTEXT),
@@ -166,12 +211,11 @@ KdpGetBaseContext(
     if ( ( Context->ContextFlags & CONTEXT_XSTATE ) == CONTEXT_XSTATE ) {
 
         // wont be set by me, so we don't really need to care.
-        Length = 0xFFFFFF;
-        //Length = SharedUserData->XState.Size + 0x320;
+        Length = SharedUserData->XState.Size + 0x320;
     }
 
     // why?    
-    //Length += 15;
+    Length += 15;
 
     if ( Length <= Body->MaximumLength ) {
 
@@ -279,9 +323,9 @@ KdpSetContext(
     // it's not used or even referenced.
     //
 
-    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
+    if ( Packet->Processor != KdGetCurrentPrcbNumber( ) ) {
 
-        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+        Context = KdGetPrcbContext( KeQueryPrcbAddress( Packet->Processor ) );
     }
 
     RtlCopyMemory( Context, Body->Buffer, Body->Length );
@@ -314,9 +358,9 @@ KdpSetContextEx(
     // TODO: Basic range checks are done by windows.
     //
 
-    if ( Packet->Processor != KeGetCurrentProcessorNumber( ) ) {
+    if ( Packet->Processor != KdGetCurrentPrcbNumber( ) ) {
 
-        Context = ( PCONTEXT )( KeQueryPrcbAddress( Packet->Processor ) + KdDebuggerDataBlock.OffsetPrcbContext );
+        Context = KdGetPrcbContext( KeQueryPrcbAddress( Packet->Processor ) );
     }
 
     RtlCopyMemory( ( PCHAR )Context + Packet->u.SetContextEx.Offset,
@@ -362,9 +406,12 @@ KdpReadControlSpace(
     // as control registers, debug registers,
     // segment registers, etc.
     //
+    // TODO: This should be really really simple
+    //       to re-implement. Should do.
+    //
 
     Packet->ReturnStatus = KdpSysReadControlSpace( Packet->Processor,
-        ( ULONG )Packet->u.ReadMemory.TargetBaseAddress,
+                                                   Packet->u.ReadMemory.TargetBaseAddress,
                                                    Body->Buffer,
                                                    ReadCount,
                                                    ( PULONG )&Packet->u.ReadMemory.ActualBytesRead );
@@ -645,7 +692,7 @@ KdpProcedureDone:
                                        NULL,
                                        &KdpContext );
 
-}
+    }
 
 KD_STATUS
 KdpGetVersion(
