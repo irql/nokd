@@ -505,7 +505,7 @@ KdDriverLoad(
     if ( !NT_SUCCESS( KdVmwRpcInitialize( ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
-    }
+}
     else {
 
         DbgPrint( "KdDebugDevice using VMWare ERPC channel %d\n", KdDebugDevice.VmwRpc.Channel );
@@ -650,6 +650,7 @@ KdDriverLoad(
     //
 
     KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
+    KdLoadSystem( );
 
 #if KD_DEBUG_NO_FREEZE
 

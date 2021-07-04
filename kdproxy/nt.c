@@ -260,3 +260,74 @@ KdSearchSignature(
 
     return NULL;
 }
+
+VOID
+KdLoadSystem(
+
+)
+{
+    //
+    // This shouldn't really be in this file, but I don't want
+    // to move any of the definitions out of this local C file,
+    // and I need to enumerate all process modules.
+    //
+    // TODO: Alternatively, you could use this to initialize the system
+    //       ready for the debugger.
+    //
+
+
+    NTSTATUS             ntStatus;
+    ULONG                Length;
+    ULONG64              CurrentModule;
+    PRTL_PROCESS_MODULES ModuleInformation;
+
+    NtQuerySystemInformation( 11,
+                              NULL,
+                              0,
+                              &Length );
+
+    ModuleInformation = ExAllocatePoolWithTag( NonPagedPoolNx,
+                                               Length,
+                                               'dKoN' );
+
+    ntStatus = NtQuerySystemInformation( 11,
+                                         ModuleInformation,
+                                         Length,
+                                         &Length );
+    if ( !NT_SUCCESS( ntStatus ) ) {
+
+        ExFreePoolWithTag( ModuleInformation, 'dKoN' );
+        return;
+    }
+
+    for ( CurrentModule = 0;
+          CurrentModule < ModuleInformation->NumberOfModules;
+          CurrentModule++ ) {
+
+        if ( strcmp( ( PCHAR )ModuleInformation->Modules[ CurrentModule ].FullPathName +
+                     ModuleInformation->Modules[ CurrentModule ].OffsetToFileName,
+                     KD_FILE_NAME ) == 0 ) {
+
+            continue;
+        }
+
+        if ( strcmp( ( PCHAR )ModuleInformation->Modules[ CurrentModule ].FullPathName +
+                     ModuleInformation->Modules[ CurrentModule ].OffsetToFileName,
+                     "ntoskrnl.exe" ) == 0 ) {
+
+            continue;
+        }
+
+        //
+        // TODO: This just calls into KdImageAddress which is a 
+        //       copy of this function, to acquire address & size.
+        //
+
+        KdReportLoaded( ( PCHAR )( ModuleInformation->Modules[ CurrentModule ].FullPathName +
+                                   ModuleInformation->Modules[ CurrentModule ].OffsetToFileName ),
+                                   ( PCHAR )( ModuleInformation->Modules[ CurrentModule ].FullPathName +
+                                              ModuleInformation->Modules[ CurrentModule ].OffsetToFileName ) );
+    }
+
+    ExFreePoolWithTag( ModuleInformation, 'dKoN' );
+}

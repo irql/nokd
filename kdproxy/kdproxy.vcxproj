@@ -157,7 +157,6 @@
     <ClCompile Include="kdimpl\kdapi.c" />
     <ClCompile Include="kdimpl\kdbp.c" />
     <ClCompile Include="kdimpl\kdmem.c" />
-    <ClCompile Include="kdimpl\pt.c" />
     <ClCompile Include="kdimpl\report.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="kdimpl\swc.c" />
@@ -168,7 +167,7 @@
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kd.h" />
     <ClInclude Include="inc\kdapi.h" />
-    <ClInclude Include="inc\mmdbg.h" />
+    <ClInclude Include="inc\pt.h" />
     <ClInclude Include="inc\uart.h" />
     <ClInclude Include="inc\vmwrpc.h" />
   </ItemGroup>

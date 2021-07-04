@@ -292,6 +292,11 @@ KdSearchSignature(
     _In_ PCHAR Signature
 );
 
+VOID
+KdLoadSystem(
+
+);
+
 BOOLEAN
 KdPollBreakIn(
 

@@ -126,7 +126,14 @@ KdReportLoaded(
     }
 
     SymbolInfo.ProcessId = 0x4;
-    SymbolInfo.CheckSum = *( ULONG32* )( ( PUCHAR )( SymbolInfo.BaseAddress + *( ULONG32* )( ( PCHAR )SymbolInfo.BaseAddress + 0x3c ) ) + 0x40 );
+    __try {
+
+        SymbolInfo.CheckSum = *( ULONG32* )( ( PUCHAR )( SymbolInfo.BaseAddress + *( ULONG32* )( ( PCHAR )SymbolInfo.BaseAddress + 0x3c ) ) + 0x40 );
+    }
+    __except ( TRUE ) {
+
+        SymbolInfo.CheckSum = 0;
+    }
 
     RtlInitString( &PathName, ImageName );
 

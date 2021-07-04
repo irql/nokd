@@ -117,7 +117,7 @@ KdUartInitializePort(
     //
     // Put the chip in loopback mode and send 0b10101110,
     // then query the RBR and check data was received 
-    // successfully, this just checks if the chop is faulty
+    // successfully, this just checks if the chip is faulty
     // or not.
     //
 
@@ -470,5 +470,4 @@ KdUartRecvPacket(
     }
 
     return KdStatusTimeOut;
-
 }

@@ -1,5 +1,6 @@
 ﻿
 #include <kd.h>
+#include <pt.h>
 
 ULONG32             KdTransportMaxPacketSize = 0xFA0; // 4000.
 
@@ -51,7 +52,6 @@ KdpReadVirtualMemory(
 
     STRING  Reciprocate;
     SIZE_T  ReadCount;
-    BOOLEAN Smap;
 
     ReadCount = Packet->u.ReadMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
@@ -81,16 +81,17 @@ KdpReadVirtualMemory(
     // MmNonPagedPoolStart, MmNonPagedPoolEnd
     //
 
-    Smap = ( BOOLEAN )( ( __readeflags( ) >> 18 ) & 1 );
-
-    if ( Smap ) {
-
-        __writeeflags( __readeflags( ) & ~0x40000 );
-    }
-
     if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
-         !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
+         !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {// ||
+         //( ( ( ULONG64* )MmGetVirtualForPhysical( *( PHYSICAL_ADDRESS* )Packet->u.ReadMemory.TargetBaseAddress ) )
+         //  [ MiIndexLevel4( Packet->u.ReadMemory.TargetBaseAddress ) ] & 1 ) == 0 ||
+         //!MiGetPpeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Present ||
+         //!MiGetPdeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Present ||
+         //( !MiGetPdeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Large &&
+           //!MiGetPteAddress( Packet->u.ReadMemory.TargetBaseAddress )->Entry.Present ) ) {
 
+        //if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
+        //     !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Body->Length = 0;
         Packet->u.ReadMemory.ActualBytesRead = 0;
@@ -99,9 +100,9 @@ KdpReadVirtualMemory(
 
         Packet->ReturnStatus = STATUS_SUCCESS;
         __try {
-            memcpy( Body->Buffer,
+            __movsb( ( PUCHAR )Body->Buffer,
                 ( void* )Packet->u.ReadMemory.TargetBaseAddress,
-                    ReadCount );
+                     ReadCount );
             Body->Length = ( USHORT )ReadCount;
             Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
         }
@@ -113,15 +114,10 @@ KdpReadVirtualMemory(
         }
     }
 
-    if ( Smap ) {
-
-        __writeeflags( ( ULONG64 )Smap << 18 );
-    }
-
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
-#if 1
+#if 0
     DbgPrint( "KdpReadVirtualMemory: %p %d %lx\n",
               Packet->u.ReadMemory.TargetBaseAddress,
               ReadCount,
@@ -164,7 +160,6 @@ KdpWriteVirtualMemory(
         //
 
         Packet->ReturnStatus = STATUS_SUCCESS;
-        __writecr0( __readcr0( ) & ~0x10000 );
 
         __try {
             memcpy( ( void* )Packet->u.WriteMemory.TargetBaseAddress,
@@ -176,8 +171,6 @@ KdpWriteVirtualMemory(
             Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
             Packet->u.WriteMemory.TransferCount = 0;
         }
-
-        __writecr0( __readcr0( ) | 0x10000 );
     }
 
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -204,21 +197,16 @@ KdpGetBaseContext(
         Context = KdGetPrcbContext( KeQueryPrcbAddress( Packet->Processor ) );
     }
 
-    // This is actually 32 bytes higher. but is then lowered to sizeof(CONTEXT),
-    // if there's no CONTEXT_XSTATE.
     Length = sizeof( CONTEXT );
 
     if ( ( Context->ContextFlags & CONTEXT_XSTATE ) == CONTEXT_XSTATE ) {
 
-        // wont be set by me, so we don't really need to care.
-        Length = SharedUserData->XState.Size + 0x320;
+        Length = SharedUserData->XState.Size + 0x320 + 32;
     }
 
-    // why?    
     Length += 15;
 
     if ( Length <= Body->MaximumLength ) {
-
 
         RtlCopyMemory( Body->Buffer, Context, Length );
         Body->Length = ( USHORT )Length;
@@ -594,7 +582,7 @@ KdpReadPhysicalMemory(
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         goto KdpProcedureDone;
-    }
+}
 
     __try {
         memcpy( Body->Buffer,
@@ -673,7 +661,7 @@ KdpWritePhysicalMemory(
                 Body->Length );
         Packet->u.WriteMemory.TransferCount = ( unsigned int )Body->Length;
         Packet->ReturnStatus = STATUS_SUCCESS;
-    }
+}
     __except ( EXCEPTION_EXECUTE_HANDLER ) {
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Packet->u.WriteMemory.TransferCount = 0;

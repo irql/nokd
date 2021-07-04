@@ -60,13 +60,18 @@ KdServiceInterrupt(
     ULONG              ProcessorNumber;
     PCONTEXT           TrapContext;
     EXCEPTION_RECORD64 ExceptRecord = { 0 };
+    ULONG64            SmapFlag;
+    ULONG64            WpFlag;
+
+    WpFlag = __readcr0( ) & ( 1ULL << 16 );
+    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+
+    SmapFlag = __readcr4( ) & ( 1ULL << 21 );
+    __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
 
     Prcb = KeGetCurrentPrcb( );
     ProcessorNumber = KdGetPrcbNumber( Prcb );
     TrapContext = KdGetPrcbContext( Prcb );
-
-    //KdPrint( "nigmode %d %d\n",
-    //         ProcessorNumber, *( ULONG32* )( Prcb + 0x2F08 - 0x180 ) );
 
     if ( !KdpFrozen ) {
 
@@ -77,7 +82,6 @@ KdServiceInterrupt(
         //
 
         KdFreezeProcessors( );
-        //KdPrint( "ContextFlags: %x %x\n", TrapContext->ContextFlags, KdDebuggerDataBlock.OffsetPrcbContext );
         KdpFrozenCount = 1;
     }
     else {
@@ -172,6 +176,10 @@ KdServiceInterrupt(
     //       for CD 02, or/and signal when we use HalSendNMI.
     //
 
+
+    __writecr4( __readcr4( ) | SmapFlag );
+    __writecr0( __readcr0( ) | WpFlag );
+
     return TRUE;
 }
 
@@ -220,38 +228,10 @@ KdDebugBreak(
     //
     // Taking a look at the handler, we can see the CONTEXT structure
     // is conveniently stored on the PRCB. I also chose to use NMI callbacks
-    // because there is no watchdog/timeout, which exists inside IPI callbacks
-    // even though they're almost the same thing.
+    // because there is no watchdog/timeout (nvm), which exists inside IPI 
+    // callbacks even though they're almost the same thing.
     //
 
-    //KAFFINITY Affinity;
-
-#if 0
-    ULONG32   CurrentProcessor;
-    KAFFINITY Affinity;
-
-    for ( CurrentProcessor = 0;
-          CurrentProcessor < KeQueryActiveProcessorCountEx( 0xFFFF );
-          CurrentProcessor++ ) {
-
-        if ( CurrentProcessor != KeGetCurrentProcessorNumber( ) ) {
-
-            Affinity |= ( 1 << CurrentProcessor );
-        }
-    }
-
-    //
-    // Fire an NMI on all processors but this one, and then
-    // fire an NMI on this processor, this means we have a 
-    // context record saved on all Prcbs, and we can handle
-    // any kd stuff inside the KdServiceInterrupt
-    //
-
-    HalSendNMI( Affinity );
-#endif
-
-    //Affinity = 1ull << KeGetCurrentProcessorNumber( );
-    //HalSendNMI( &Affinity );
     KdNmiBp( );
 }
 
@@ -267,6 +247,8 @@ KdFreezeProcessors(
 
     USHORT           CurrentGroup;
     KAFFINITY_EX     Affinity;
+    ULONG32          Index;
+    PROCESSOR_NUMBER ProcessorNumber;
 
     KdpFreezeOwner = KdGetCurrentPrcbNumber( );
     KdpFrozen = TRUE;
@@ -296,13 +278,13 @@ KdFreezeProcessors(
     // removes the bit from the bitmap.
     //
 
-    //ProcessorNumber.Group = ( USHORT )( KdpFreezeOwner / 64 );
-    //ProcessorNumber.Number = KdpFreezeOwner % 64;
+    ProcessorNumber.Group = ( USHORT )( KdpFreezeOwner / 64 );
+    ProcessorNumber.Number = KdpFreezeOwner % 64;
 
-    //Index = KeGetProcessorIndexFromNumber( &ProcessorNumber );
+    Index = KeGetProcessorIndexFromNumber( &ProcessorNumber );
 
-    //Affinity.Bitmap[ Index / 64 ] &= ~( 1ull << ( Index % 64 ) );
-    Affinity.Bitmap[ KdpFreezeOwner / 64 ] &= ~( 1ull << ( KdpFreezeOwner % 64 ) );
+    Affinity.Bitmap[ Index / 64 ] &= ~( 1ull << ( Index % 64 ) );
+    //Affinity.Bitmap[ KdpFreezeOwner / 64 ] &= ~( 1ull << ( KdpFreezeOwner % 64 ) );
 
     //
     // Fire an NMI on all processors but this one. 
