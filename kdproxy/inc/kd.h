@@ -227,7 +227,8 @@ typedef struct _KD_BREAKPOINT_ENTRY {
     PEPROCESS Process;
     ULONG64   Address;
     ULONG32   Flags;
-    UCHAR     Content[ 8 ];
+    ULONG32   ContentLength;
+    UCHAR     Content[ 0x20 ];
 } KD_BREAKPOINT_ENTRY, *PKD_BREAKPOINT_ENTRY;
 
 //
@@ -256,6 +257,14 @@ typedef enum _KD_SERVICE_NUMBER {
     KdServiceStateChangeExcept,
     KdServiceStateChange
 } KD_SERVICE_NUMBER, *PKD_SERVICE_NUMBER;
+
+#define KDPR_FLAG_TPE   0x00000001
+
+typedef struct _KD_PROCESSOR {
+    ULONG32 Flags;
+    ULONG64 Tracepoint;
+    UCHAR   TracepointCode[ 0x20 ];
+} KD_PROCESSOR, *PKD_PROCESSOR;
 
 //
 // definitions for kdapi, which are 
@@ -450,11 +459,32 @@ KdGetCurrentPrcbContext(
 
 );
 
+PKSPECIAL_REGISTERS
+KdGetPrcbSpecialRegisters(
+    _In_ ULONG_PTR Prcb
+);
+
 //
 // IMPORTS
 //
 
 
+
+//
+// x86 JUNK
+//
+
+//
+// Any flag which could cause a branch.
+//
+
+#define EFL_CF 0x00000001
+#define EFL_PF 0x00000004
+#define EFL_ZF 0x00000040
+#define EFL_SF 0x00000080
+#define EFL_OF 0x00000800
+
+#define KeSweepLocalCaches __wbinvd
 
 //
 // VARIABLES
@@ -524,3 +554,8 @@ EXTERN_C KD_DEBUG_DEVICE     KdDebugDevice;
 EXTERN_C PUSHORT             KeProcessorLevel;
 
 EXTERN_C UCHAR               KdpMessageBuffer[ 0x1000 ];
+EXTERN_C KD_BREAKPOINT_ENTRY KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ];
+EXTERN_C ULONG               KdpBreakpointCodeLength;
+EXTERN_C UCHAR               KdpBreakpointCode[ ];
+
+EXTERN_C PKD_PROCESSOR       KdProcessorBlock;

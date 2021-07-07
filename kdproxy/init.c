@@ -3,6 +3,7 @@
 #include <kd.h>
 #include <uart.h>
 #include <vmwrpc.h>
+#include <pt.h>
 
 #if KD_DEBUG_NO_FREEZE 
 
@@ -505,7 +506,7 @@ KdDriverLoad(
     if ( !NT_SUCCESS( KdVmwRpcInitialize( ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
-}
+    }
     else {
 
         DbgPrint( "KdDebugDevice using VMWare ERPC channel %d\n", KdDebugDevice.VmwRpc.Channel );
@@ -637,6 +638,20 @@ KdDriverLoad(
         return STATUS_UNSUCCESSFUL;
     }
 
+    KdProcessorBlock = ( PKD_PROCESSOR )ExAllocatePoolWithTag( NonPagedPoolNx,
+                                                               sizeof( KD_PROCESSOR ) *
+                                                               KeQueryActiveProcessorCountEx( 0xFFFF ),
+                                                               'dKoN' );
+
+    KdPrint( "pte at: %p versus %p\n", MiGetPteAddress( ( ULONG_PTR )KdProcessorBlock ),
+             &MiReferenceLevel2Entry( MiIndexLevel4( ( ( ULONG_PTR )KdProcessorBlock ) ),
+                                      MiIndexLevel3( ( ( ULONG_PTR )KdProcessorBlock ) ),
+                                      MiIndexLevel2( ( ( ULONG_PTR )KdProcessorBlock ) ) )
+             [ MiIndexLevel1( ( ( ULONG_PTR )KdProcessorBlock ) ) ] );
+    RtlZeroMemory( KdProcessorBlock,
+                   sizeof( KD_PROCESSOR ) *
+                   KeQueryActiveProcessorCountEx( 0xFFFF ) );
+
     //
     // Gotta print our big ass ascii text of "nokd" after
     // loading, and before allowing a break-in, this wouldn't
@@ -650,7 +665,7 @@ KdDriverLoad(
     //
 
     KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
-    KdLoadSystem( );
+    //KdLoadSystem( );
 
 #if KD_DEBUG_NO_FREEZE
 

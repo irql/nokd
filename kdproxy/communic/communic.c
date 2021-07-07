@@ -1,5 +1,5 @@
 ﻿
-#include "kd.h"
+#include <kd.h>
 
 KD_DEBUG_DEVICE  KdDebugDevice;
 
@@ -7,6 +7,12 @@ VOLATILE ULONG32 KdpFrozenCount = 0;
 VOLATILE ULONG32 KdpFreezeOwner;
 VOLATILE BOOLEAN KdpFrozen = FALSE;
 PVOID            KdpNmiHandle = NULL;
+
+//
+// This structure is exists to manage breakpoints &
+// the trap flag.
+//
+PKD_PROCESSOR    KdProcessorBlock;
 
 BOOLEAN
 KdServiceInterrupt(
@@ -62,6 +68,8 @@ KdServiceInterrupt(
     EXCEPTION_RECORD64 ExceptRecord = { 0 };
     ULONG64            SmapFlag;
     ULONG64            WpFlag;
+    PKTRAP_FRAME       TrapFrame = ( PKTRAP_FRAME )(
+        ( ( ( ULONG64 )_AddressOfReturnAddress( ) + 0x1000 ) & ~0xFFF ) - sizeof( KTRAP_FRAME ) - 32 );
 
     WpFlag = __readcr0( ) & ( 1ULL << 16 );
     __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
@@ -72,6 +80,39 @@ KdServiceInterrupt(
     Prcb = KeGetCurrentPrcb( );
     ProcessorNumber = KdGetPrcbNumber( Prcb );
     TrapContext = KdGetPrcbContext( Prcb );
+
+    //
+    // Handle a tracepoint on the current processor, this is very
+    // simple, a tracepoint in this system is just cd 02 being placed
+    // after the previous instruction, although, as of writing this, 
+    // it will not work for any branch instructions, gota fix that.
+    //
+    // Tracepoints also send a state change to the debugger,
+    // the debugger will re-enable the breakpoint and we can continue.
+    // They're also quite dangerous for multi-processor because another
+    // processor could hit the cd 02 tracepoint, which would be weird
+    // and could crash the system because of the instruction pointer
+    // never being re-aligned due to KDPR_FLAG_TPE not being set.
+    //
+
+    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) {
+
+        KdPrint( "Tracepoint Processor nmi!\n" );
+    }
+
+    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE &&
+         KdProcessorBlock[ ProcessorNumber ].Tracepoint == TrapContext->Rip - KdpBreakpointCodeLength ) {
+
+        RtlCopyMemory( ( void* )KdProcessorBlock[ ProcessorNumber ].Tracepoint,
+            ( void* )KdProcessorBlock[ ProcessorNumber ].TracepointCode,
+                       0x20 );
+
+        TrapContext->Rip -= KdpBreakpointCodeLength;
+        KdProcessorBlock[ ProcessorNumber ].Flags &= ~KDPR_FLAG_TPE;
+
+        KeSweepLocalCaches( );
+        KdPrint( "Tracepoint caught! %p\n", TrapContext->Rip );
+    }
 
     if ( !KdpFrozen ) {
 
@@ -169,16 +210,22 @@ KdServiceInterrupt(
         KdThawProcessors( );
     }
 
+    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) {
+
+        KdPrint( "Tracepoint continue: %p -> %p\n", TrapFrame->Rip, TrapContext->Rip );
+    }
+
+    __writecr4( __readcr4( ) | SmapFlag );
+    __writecr0( __readcr0( ) | WpFlag );
+
+    TrapFrame->Rip = TrapContext->Rip;
+
     //
     // TODO: Very unlikely, but if another component or faulty hardware
     //       issues an NMI, we should not be returning TRUE, and we should
     //       not really signal a state change, a work-around would be to check 
     //       for CD 02, or/and signal when we use HalSendNMI.
     //
-
-
-    __writecr4( __readcr4( ) | SmapFlag );
-    __writecr0( __readcr0( ) | WpFlag );
 
     return TRUE;
 }
@@ -247,8 +294,8 @@ KdFreezeProcessors(
 
     USHORT           CurrentGroup;
     KAFFINITY_EX     Affinity;
-    ULONG32          Index;
-    PROCESSOR_NUMBER ProcessorNumber;
+    //ULONG32          Index;
+    //PROCESSOR_NUMBER ProcessorNumber;
 
     KdpFreezeOwner = KdGetCurrentPrcbNumber( );
     KdpFrozen = TRUE;
@@ -278,13 +325,13 @@ KdFreezeProcessors(
     // removes the bit from the bitmap.
     //
 
-    ProcessorNumber.Group = ( USHORT )( KdpFreezeOwner / 64 );
-    ProcessorNumber.Number = KdpFreezeOwner % 64;
+    //ProcessorNumber.Group = ( USHORT )( KdpFreezeOwner / 64 );
+    //ProcessorNumber.Number = KdpFreezeOwner % 64;
 
-    Index = KeGetProcessorIndexFromNumber( &ProcessorNumber );
+    //Index = KeGetProcessorIndexFromNumber( &ProcessorNumber );
 
-    Affinity.Bitmap[ Index / 64 ] &= ~( 1ull << ( Index % 64 ) );
-    //Affinity.Bitmap[ KdpFreezeOwner / 64 ] &= ~( 1ull << ( KdpFreezeOwner % 64 ) );
+    //Affinity.Bitmap[ Index / 64 ] &= ~( 1ull << ( Index % 64 ) );
+    Affinity.Bitmap[ KdpFreezeOwner / 64 ] &= ~( 1ull << ( KdpFreezeOwner % 64 ) );
 
     //
     // Fire an NMI on all processors but this one. 

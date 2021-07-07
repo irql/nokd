@@ -153,6 +153,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="communic\communic.c" />
+    <ClCompile Include="hde64\hde64.c" />
     <ClCompile Include="init.c" />
     <ClCompile Include="kdimpl\kdapi.c" />
     <ClCompile Include="kdimpl\kdbp.c" />
@@ -164,6 +165,8 @@
     <ClCompile Include="communic\vmwrpc.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="hde64\hde64.h" />
+    <ClInclude Include="hde64\table64.h" />
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kd.h" />
     <ClInclude Include="inc\kdapi.h" />

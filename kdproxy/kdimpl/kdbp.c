@@ -1,10 +1,11 @@
 ﻿
 #include <kd.h>
+#include "../hde64/hde64.h"
 
-KD_BREAKPOINT_ENTRY KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ];
+KD_BREAKPOINT_ENTRY KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ] = { 0 };
 
-static ULONG BreakpointCodeLength = 2;
-static UCHAR BreakpointCode[ ] = {
+ULONG KdpBreakpointCodeLength = 2;
+UCHAR KdpBreakpointCode[ ] = {
     0xCD, 0x02
 };
 
@@ -23,7 +24,6 @@ KdpAddBreakpoint(
     //
 
     STRING  Reciprocate;
-    SIZE_T  Length;
     ULONG32 CurrentBreakpoint;
     ULONG32 BreakpointHandle;
 
@@ -63,27 +63,28 @@ KdpAddBreakpoint(
     KdpBreakpointTable[ BreakpointHandle ].Address = Packet->u.WriteBreakPoint.BreakPointAddress;
     KdpBreakpointTable[ BreakpointHandle ].Process = PsGetCurrentProcess( );
 
-    Packet->ReturnStatus = MmCopyMemory( KdpBreakpointTable[ BreakpointHandle ].Content,
-        ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
-    if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
+    __try {
 
+        RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Content,
+            ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
+                       0x20 );
+
+        RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
+                       KdpBreakpointCode,
+                       KdpBreakpointCodeLength );
+
+        //_mm_clflush( ( void* )KdpBreakpointTable[ BreakpointHandle ].Address );
+        KeSweepLocalCaches( );
+
+        Packet->ReturnStatus = STATUS_SUCCESS;
+    }
+    __except ( TRUE ) {
+
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         goto KdpProcedureDone;
     }
 
     Packet->u.WriteBreakPoint.BreakPointHandle = BreakpointHandle;
-
-    Packet->ReturnStatus = MmCopyMemory( ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         BreakpointCode,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
-    if ( !NT_SUCCESS( Packet->ReturnStatus ) ) {
-
-        goto KdpProcedureDone;
-    }
 
     KdpBreakpointTable[ BreakpointHandle ].Flags |= KD_BPE_SET;
 
@@ -108,10 +109,6 @@ KdpDeleteBreakpoint(
 
     STRING     Reciprocate;
     ULONG32    BreakpointHandle;
-    SIZE_T     Length;
-    KAPC_STATE ApcState;
-
-    // TODO: Needs range check.
 
     BreakpointHandle = Packet->u.RestoreBreakPoint.BreakPointHandle;
 
@@ -127,16 +124,25 @@ KdpDeleteBreakpoint(
         goto KdpProcedureDone;
     }
 
-    KeStackAttachProcess( KdpBreakpointTable[ BreakpointHandle ].Process, &ApcState );
-
-    Packet->ReturnStatus = MmCopyMemory( ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address,
-                                         KdpBreakpointTable[ BreakpointHandle ].Content,
-                                         BreakpointCodeLength,
-                                         MM_COPY_ADDRESS_VIRTUAL,
-                                         &Length );
     KdpBreakpointTable[ BreakpointHandle ].Flags &= ~KD_BPE_SET;
 
-    KeUnstackDetachProcess( &ApcState );
+    Packet->ReturnStatus = STATUS_SUCCESS;
+
+    __try {
+
+        KdCopyProcessSpace( ( void* )KdpBreakpointTable[ BreakpointHandle ].Process,
+            ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
+                            KdpBreakpointTable[ BreakpointHandle ].Content,
+                            KdpBreakpointTable[ BreakpointHandle ].ContentLength +
+                            KdpBreakpointCodeLength );
+        KeSweepLocalCaches( );
+    }
+    __except ( TRUE ) {
+
+        goto KdpProcedureDone;
+    }
+
+    DbgPrint( "BP DELETED!\n" );
 
 KdpProcedureDone:
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );

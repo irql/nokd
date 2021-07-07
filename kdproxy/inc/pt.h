@@ -91,9 +91,12 @@ MiGetPteAddress(
     _In_ ULONG_PTR Address
 )
 {
+    /*
     return &MiReferenceLevel2Entry( MiIndexLevel4( Address ),
                                     MiIndexLevel3( Address ),
                                     MiIndexLevel2( Address ) )[ MiIndexLevel1( Address ) ];
+                                    */
+    return ( PMMPTE_HARDWARE )( ( ( Address >> 9 ) & 0x7FFFFFFFF8i64 ) + 0xFFFFF68000000000 );
 }
 
 CFORCEINLINE

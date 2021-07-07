@@ -1,5 +1,6 @@
 ﻿
-#include "kd.h"
+#include <kd.h>
+#include "../hde64/hde64.h"
 
 UCHAR KdpMessageBuffer[ 0x1000 ];
 
@@ -28,15 +29,16 @@ KdpSetCommonState(
     _Inout_ PDBGKD_WAIT_STATE_CHANGE Change
 )
 {
-    SIZE_T InstructionCount;
-
     //
     // TODO: This procedure also deletes the breakpoint range at
     //       the context's rip.
     //
 
+    ULONG64 InstructionCount;
+    ULONG32 CurrentHandle;
+
     Change->ApiNumber = ApiNumber;
-    Change->Processor = ( USHORT )KeGetCurrentProcessorNumber( );
+    Change->Processor = ( USHORT )KdGetCurrentPrcbNumber( );
     Change->ProcessorCount = KeQueryActiveProcessorCountEx( 0xFFFF );
     if ( Change->ProcessorCount <= Change->Processor ) {
 
@@ -45,17 +47,48 @@ KdpSetCommonState(
 
     Change->ProcessorLevel = *KeProcessorLevel;
     Change->CurrentThread = ( ULONG64 )KeGetCurrentThread( );
-    Change->ProgramCounter = Context->Rip;
 
     RtlZeroMemory( &Change->ControlReport, sizeof( DBGKD_CONTROL_REPORT ) );
 
-#if 0
-    MmCopyMemory( Change->ControlReport.InstructionStream,
-        ( PVOID )Context->Rip,
-                  0x10,
-                  MM_COPY_ADDRESS_VIRTUAL,
-                  &InstructionCount );
-#endif
+    //
+    // This is important breakpoint handling code,
+    // this will set a stub-bp directly after the previous instruction,
+    // this will be caught, and the old bp will be re-added.
+    //
+
+    for ( CurrentHandle = 0;
+          CurrentHandle < KD_BREAKPOINT_TABLE_LENGTH;
+          CurrentHandle++ ) {
+
+        if ( KdpBreakpointTable[ CurrentHandle ].Flags & KD_BPE_SET ) {
+
+            if ( KdpBreakpointTable[ CurrentHandle ].Address ==
+                 Context->Rip - KdpBreakpointCodeLength ) {
+
+                __try {
+                    RtlCopyMemory( ( void* )KdpBreakpointTable[ CurrentHandle ].Address,
+                        ( void* )KdpBreakpointTable[ CurrentHandle ].Content,
+                                   KdpBreakpointCodeLength );
+
+                    RtlCopyMemory( ( void* )( KdpBreakpointTable[ CurrentHandle ].Address +
+                                              KdpBreakpointTable[ CurrentHandle ].ContentLength ),
+                                   KdpBreakpointCode,
+                                   KdpBreakpointCodeLength );
+                }
+                __except ( TRUE ) {
+
+                    NT_ASSERT( FALSE );
+                }
+
+                //_mm_clflush( ( void* )KdProcessorBlock[ CurrentHandle ].Tracepoint );
+
+                Context->Rip -= KdpBreakpointCodeLength;
+                break;
+            }
+        }
+    }
+
+    Change->ProgramCounter = Context->Rip;
 
     __try {
         RtlCopyMemory( Change->ControlReport.InstructionStream, ( PVOID )Context->Rip, 0x10 );
@@ -66,6 +99,7 @@ KdpSetCommonState(
         InstructionCount = 0;
     }
     Change->ControlReport.InstructionCount = ( USHORT )InstructionCount;
+
 }
 
 VOID
@@ -78,8 +112,8 @@ KdpSetContextState(
     // TODO: Must call real KdpSetContextState.
     // dr's come from Prcb->ProcessorState.
 
-    Change->ControlReport.Dr6 = 0;
-    Change->ControlReport.Dr7 = 0;
+    Change->ControlReport.Dr6 = KdGetPrcbSpecialRegisters( KeGetCurrentPrcb( ) )->KernelDr6;
+    Change->ControlReport.Dr7 = KdGetPrcbSpecialRegisters( KeGetCurrentPrcb( ) )->KernelDr7;
 
     Change->ControlReport.SegCs = Context->SegCs;
     Change->ControlReport.SegDs = Context->SegDs;
@@ -120,6 +154,9 @@ KdpSendWaitContinue(
     STRING                   Body;
     ULONG32                  Length;
     DBGKD_MANIPULATE_STATE64 Packet;
+    ULONG32                  Processor;
+    HDE64S                   HdeCode;
+    ULONG32                  CodeLength;
 
     Head.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Head.Length = 0;
@@ -165,20 +202,6 @@ KdpResendPacket:
 
                 goto KdpResendPacket;
             }
-
-#if 0
-            if ( Status == KdStatusError ) {
-
-                //
-                // A timeout is fine, an error, not so much.
-                //
-
-                DbgPrint( "KdStatusError received, NotPresent set, assuming disconnect.\n" );
-
-                KdDebuggerNotPresent_ = TRUE;
-                break;
-            }
-#endif
 
             CHAR DbgKdApi[ DbgKdMaximumManipulate - DbgKdMinimumManipulate ][ 48 ] = {
                 "DbgKdReadVirtualMemoryApi",
@@ -299,8 +322,527 @@ KdpResendPacket:
 
                         return FALSE;
                     }
-                    KdpGetStateChange( &Packet,
-                                       Context );
+
+                    if ( Packet.u.Continue2.ControlSet.TraceFlag ) {
+
+                        Processor = KdGetCurrentPrcbNumber( );
+
+                        KdProcessorBlock[ Processor ].Flags |= KDPR_FLAG_TPE;
+
+                        KdProcessorBlock[ Processor ].Tracepoint = Context->Rip;
+
+                        __try {
+                            CodeLength = Hde64Decode( ( const void* )KdProcessorBlock[ Processor ].Tracepoint, &HdeCode );
+
+                            //
+                            // This switch statement is responsible for calculating
+                            // the instruction pointer after said instruction is executed.
+                            // This means if it's a branch/return/any branching instruction,
+                            // we have to calculate where it will land.
+                            //
+                            // We don't account for any far jumps or far returns, 
+                            // and you should have any far jumps or far returns in your
+                            // code.
+                            //
+                            // Instructions: LOOP/Z/NZ
+                            //
+                            // Although this is a little weird, a good note is that rep
+                            // prefixes are not accounted for, where as they are for
+                            // trap flag usage.
+                            //
+                            // TODO: Sib bytes are not handled.
+                            //
+                            // NOTE:
+                            // Hde64 is quite disappointing, after writing this 500 or so line 
+                            // branch emulator, I've noticed it's unable to decode some instructions
+                            // the first example has it's length set to 0:
+                            // 450fb6f1        movzx   r14d,r9b
+                            //
+                            // This could also be partially my fault, I don't handle any errors generated 
+                            // here and assume you don't have your debugger execute junk.
+                            //
+
+
+                            switch ( HdeCode.opcode ) {
+
+                                //
+                                // Near return, read the return address from the top of
+                                // the stack.
+                                //
+                            case 0xC3:
+                            case 0xC2:
+
+                                KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )Context->Rsp;
+                                break;
+
+                                //
+                                // Jump rel8
+                                //
+                            case 0xEB:
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+                                KdProcessorBlock[ Processor ].Tracepoint += ( LONG64 )( CHAR )HdeCode.imm.imm8;
+                                break;
+
+                                //
+                                // Jump/Call rel16/rel32
+                                //
+                            case 0xE9:
+                            case 0xE8:
+
+                                //
+                                // Inconsistent hde meaning this is an immediate, not a displacement,
+                                // as expected. I suppose it is only 200 lines.
+                                // 
+
+                                if ( HdeCode.p_66 ) {
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+                                    KdProcessorBlock[ Processor ].Tracepoint += ( LONG64 )( LONG32 )HdeCode.imm.imm16;
+                                }
+                                else {
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+                                    KdProcessorBlock[ Processor ].Tracepoint += ( LONG64 )( LONG32 )HdeCode.imm.imm32;
+                                }
+                                break;
+
+                                //
+                                // Jump/Call modrm
+                                //
+                            case 0xFF:
+
+                                //
+                                // The only difference between a FF call and FF jmp
+                                // is that, the modrm's reg field is 2 on a jmp, 
+                                // and 1 on a call. it's 0 for increment, and 3 for
+                                // push, so we need to avoid those.
+                                //
+
+                                if ( HdeCode.modrm_reg == 2 ||
+                                     HdeCode.modrm_reg == 1 ) {
+
+                                    switch ( HdeCode.modrm_mod ) {
+                                    case 0:
+                                        //
+                                        // [ Register ]
+                                        //
+
+                                        //
+                                        // Rbp rm (5) is used for Rip relative addressing.
+                                        //
+
+                                        if ( HdeCode.modrm_rm == 5 ) {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )(
+                                                KdProcessorBlock[ Processor ].Tracepoint +
+                                                CodeLength +
+                                                ( LONG64 )( LONG32 )HdeCode.disp.disp32 );
+                                        }
+                                        else {
+                                            if ( HdeCode.flags & F_PREFIX_REX ) {
+
+                                                KdProcessorBlock[ Processor ].Tracepoint = **( ( ULONG64** )&Context->R8 + HdeCode.modrm_rm );
+                                            }
+                                            else {
+
+                                                KdProcessorBlock[ Processor ].Tracepoint = **( ( ULONG64** )&Context->Rax + HdeCode.modrm_rm );
+                                            }
+                                        }
+
+                                        break;
+                                    case 1:
+                                        //
+                                        // [ Register + Displacement8 ]
+                                        //
+
+                                        if ( HdeCode.flags & F_PREFIX_REX ) {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )(
+                                                *( &Context->R8 + HdeCode.modrm_rm ) + ( LONG64 )( CHAR )HdeCode.disp.disp8 );
+                                        }
+                                        else {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )(
+                                                *( &Context->Rax + HdeCode.modrm_rm ) + ( LONG64 )( CHAR )HdeCode.disp.disp8 );
+                                        }
+
+                                        break;
+                                    case 2:
+                                        //
+                                        // [ Register + Displacement32 ]
+                                        //
+
+                                        if ( HdeCode.flags & F_PREFIX_REX ) {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )(
+                                                *( &Context->R8 + HdeCode.modrm_rm ) + ( LONG64 )( LONG32 )HdeCode.disp.disp32 );
+                                        }
+                                        else {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( ULONG64* )(
+                                                *( &Context->Rax + HdeCode.modrm_rm ) + ( LONG64 )( LONG32 )HdeCode.disp.disp32 );
+                                        }
+
+                                        break;
+                                    case 3:
+                                        //
+                                        // Register
+                                        //
+
+                                        if ( HdeCode.flags & F_PREFIX_REX ) {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( &Context->R8 + HdeCode.modrm_rm );
+                                        }
+                                        else {
+
+                                            KdProcessorBlock[ Processor ].Tracepoint = *( &Context->Rax + HdeCode.modrm_rm );
+                                        }
+                                        break;
+                                    default:
+                                        __assume( 0 );
+                                    }
+                                }
+
+                                break;
+
+                                //
+                                // All conditional short jumps
+                                //
+                            case 0x70: // Jo
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_OF ) == EFL_OF ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x71: // Jno
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_OF ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x72: // Jc
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_CF ) == EFL_CF ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x73: // Jnc
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_CF ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x74: // Jz
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_ZF ) == EFL_ZF ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x75: // Jnz
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_ZF ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x76: // Jbe
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & ( EFL_CF | EFL_ZF ) ) != 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x77: // Jnbe
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & ( EFL_CF | EFL_ZF ) ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x78: // Js
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_SF ) == EFL_SF ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x79: // Jns
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_SF ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7A: // Jp
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_PF ) == EFL_PF ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7B: // Jnp
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( Context->EFlags & EFL_PF ) == 0 ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7C: // Jnge
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( ( Context->EFlags & EFL_SF ) == EFL_SF ) !=
+                                    ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7D: // Jge
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( ( Context->EFlags & EFL_SF ) == EFL_SF ) ==
+                                    ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7E: // Jng
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( ( Context->EFlags & EFL_ZF ) == EFL_ZF ) ||
+                                    ( ( Context->EFlags & EFL_SF ) == EFL_SF ) !=
+                                     ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0x7F: // Jg
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( ( ( Context->EFlags & EFL_ZF ) == 0 ) &&
+                                    ( ( Context->EFlags & EFL_SF ) == EFL_SF ) ==
+                                     ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                    KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                }
+                                break;
+                            case 0xE3: // Jrcxz & Jecxz
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                if ( HdeCode.p_67 ) {
+
+                                    if ( ( Context->Rcx & 0xFFFFFFFF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                    }
+                                }
+                                else {
+
+                                    if ( Context->Rcx == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( CHAR )HdeCode.disp.disp8;
+                                    }
+                                }
+
+                                break;
+                                //
+                                // All conditional near jumps
+                                //
+                            case 0x0F:
+
+                                switch ( HdeCode.opcode2 ) {
+                                case 0x80: // Jo
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_OF ) == EFL_OF ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x81: // Jno
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_OF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x82: // Jc
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_CF ) == EFL_CF ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x83: // Jnc
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_CF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x84: // Jz
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_ZF ) == EFL_ZF ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x85: // Jnz
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_ZF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x86: // Jbe
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & ( EFL_CF | EFL_ZF ) ) != 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x87: // Jnbe
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & ( EFL_CF | EFL_ZF ) ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x88: // Js
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_SF ) == EFL_SF ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x89: // Jns
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_SF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8A: // Jp
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_PF ) == EFL_PF ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8B: // Jnp
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( Context->EFlags & EFL_PF ) == 0 ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8C: // Jnge
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( ( Context->EFlags & EFL_SF ) == EFL_SF ) !=
+                                        ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8D: // Jge
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( ( Context->EFlags & EFL_SF ) == EFL_SF ) ==
+                                        ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8E: // Jng
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( ( Context->EFlags & EFL_ZF ) == EFL_ZF ) ||
+                                        ( ( Context->EFlags & EFL_SF ) == EFL_SF ) !=
+                                         ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                case 0x8F: // Jg
+                                    KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+
+                                    if ( ( ( Context->EFlags & EFL_ZF ) == 0 ) &&
+                                        ( ( Context->EFlags & EFL_SF ) == EFL_SF ) ==
+                                         ( ( Context->EFlags & EFL_OF ) == EFL_OF ) ) {
+
+                                        KdProcessorBlock[ Processor ].Tracepoint +=  ( LONG64 )( LONG32 )HdeCode.disp.disp32;
+                                    }
+                                    break;
+                                default:
+
+                                    break;
+                                }
+
+                                break;
+                            default:
+                                KdProcessorBlock[ Processor ].Tracepoint += CodeLength;
+                                break;
+                            }
+
+                            RtlCopyMemory( ( void* )KdProcessorBlock[ Processor ].TracepointCode,
+                                ( void* )KdProcessorBlock[ Processor ].Tracepoint,
+                                           0x20 );
+
+                            RtlCopyMemory( ( void* )KdProcessorBlock[ Processor ].Tracepoint,
+                                           KdpBreakpointCode,
+                                           KdpBreakpointCodeLength );
+
+                            KeSweepLocalCaches( );
+                        }
+                        __except ( TRUE ) {
+
+
+                        }
+
+                        KdPrint( "Tracepoint set: %p -> %p\n",
+                                 Context->Rip,
+                                 KdProcessorBlock[ Processor ].Tracepoint );
+                    }
+
+                    for ( Processor = 0;
+                          Processor < KeQueryActiveProcessorCountEx( 0xFFFF );
+                          Processor++ ) {
+
+                        KdGetPrcbSpecialRegisters( KeQueryPrcbAddress( Processor ) )->KernelDr6 = 0;
+                        KdGetPrcbSpecialRegisters( KeQueryPrcbAddress( Processor ) )->KernelDr7 =
+                            Packet.u.Continue2.ControlSet.Dr7;
+                    }
+
+                    // write about tf and apc
+
+                    //KdpGetStateChange( &Packet,
+                    //                   Context );
                     return TRUE;
                 case DbgKdReadPhysicalMemoryApi:
                     KdpReadPhysicalMemory( &Packet,
@@ -377,13 +919,13 @@ KdpResendPacket:
 #else
             //KeStallExecutionProcessor( 500 * 1000 );
 #endif
-            }
+        }
 
         KdDebugDevice.KdSendPacket( KdTypeStateChange,
                                     StateChangeHead,
                                     StateChangeBody,
                                     &KdpContext );
-        }
+    }
 
     return TRUE;
-    }
+}

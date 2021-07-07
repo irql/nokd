@@ -37,6 +37,14 @@ KdGetCurrentPrcbContext(
     return KdGetPrcbContext( KeGetCurrentPrcb( ) );
 }
 
+PKSPECIAL_REGISTERS
+KdGetPrcbSpecialRegisters(
+    _In_ ULONG_PTR Prcb
+)
+{
+    return ( PKSPECIAL_REGISTERS )( Prcb + KdDebuggerDataBlock.OffsetPrcbProcStateSpecialReg );
+}
+
 KD_STATUS
 KdpReadVirtualMemory(
     _Inout_ PDBGKD_MANIPULATE_STATE64 Packet,
@@ -82,29 +90,21 @@ KdpReadVirtualMemory(
     //
 
     if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
-         !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {// ||
-         //( ( ( ULONG64* )MmGetVirtualForPhysical( *( PHYSICAL_ADDRESS* )Packet->u.ReadMemory.TargetBaseAddress ) )
-         //  [ MiIndexLevel4( Packet->u.ReadMemory.TargetBaseAddress ) ] & 1 ) == 0 ||
-         //!MiGetPpeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Present ||
-         //!MiGetPdeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Present ||
-         //( !MiGetPdeAddress( Packet->u.ReadMemory.TargetBaseAddress )->Table.Large &&
-           //!MiGetPteAddress( Packet->u.ReadMemory.TargetBaseAddress )->Entry.Present ) ) {
+         !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
 
-        //if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
-        //     !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Body->Length = 0;
         Packet->u.ReadMemory.ActualBytesRead = 0;
     }
     else {
 
-        Packet->ReturnStatus = STATUS_SUCCESS;
         __try {
-            __movsb( ( PUCHAR )Body->Buffer,
+            RtlCopyMemory( ( PUCHAR )Body->Buffer,
                 ( void* )Packet->u.ReadMemory.TargetBaseAddress,
-                     ReadCount );
+                           ReadCount );
             Body->Length = ( USHORT )ReadCount;
             Packet->u.ReadMemory.ActualBytesRead = ( unsigned int )ReadCount;
+            Packet->ReturnStatus = STATUS_SUCCESS;
         }
         __except ( EXCEPTION_EXECUTE_HANDLER ) {
 
@@ -151,7 +151,7 @@ KdpWriteVirtualMemory(
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Packet->u.WriteMemory.TransferCount = 0;
-    }
+}
     else {
         //
         // Currently, not bothered to make this HVCI compliant,
@@ -559,20 +559,13 @@ KdpReadPhysicalMemory(
     _Inout_ PSTRING                   Body
 )
 {
-    STRING Reciprocate;
-    SIZE_T ReadCount;
-    PVOID  Buffer;
+    STRING  Reciprocate;
+    SIZE_T  ReadCount;
+    PVOID   Buffer;
 
     ReadCount = Packet->u.ReadMemory.TransferCount;
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
     ReadCount = min( Body->MaximumLength, ReadCount );
-#if 0
-    Packet->ReturnStatus = MmCopyMemory( Body->Buffer,
-        ( PVOID )Packet->u.ReadMemory.TargetBaseAddress,
-                                         ReadCount,
-                                         MM_COPY_ADDRESS_PHYSICAL,
-                                         &ReadCount );
-#endif
 
     Buffer = MmMapIoSpace( *( PPHYSICAL_ADDRESS )&Packet->u.ReadMemory.TargetBaseAddress,
                            ReadCount,
@@ -582,7 +575,7 @@ KdpReadPhysicalMemory(
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         goto KdpProcedureDone;
-}
+    }
 
     __try {
         memcpy( Body->Buffer,
@@ -661,7 +654,7 @@ KdpWritePhysicalMemory(
                 Body->Length );
         Packet->u.WriteMemory.TransferCount = ( unsigned int )Body->Length;
         Packet->ReturnStatus = STATUS_SUCCESS;
-}
+    }
     __except ( EXCEPTION_EXECUTE_HANDLER ) {
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Packet->u.WriteMemory.TransferCount = 0;
@@ -680,7 +673,7 @@ KdpProcedureDone:
                                        NULL,
                                        &KdpContext );
 
-    }
+}
 
 KD_STATUS
 KdpGetVersion(
@@ -762,7 +755,7 @@ KdpQueryMemory(
 
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
-    Reciprocate.Buffer = ( PCHAR )&Packet;
+    Reciprocate.Buffer = ( PCHAR )Packet;
 
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,

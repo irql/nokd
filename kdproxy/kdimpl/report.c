@@ -220,6 +220,7 @@ KdpReportExceptionStateChange(
                    ExceptRecord,
                    sizeof( EXCEPTION_RECORD64 ) );
     State.u.Exception.FirstChance = !SecondChance;
+    State.u.Exception.ExceptionRecord.ExceptionAddress = ExceptContext->Rip;
     KdpSetContextState( &State, ExceptContext );
 
     Head.Length = sizeof( DBGKD_WAIT_STATE_CHANGE );

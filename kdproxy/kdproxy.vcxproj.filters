@@ -11,6 +11,7 @@
     <ClCompile Include="kdimpl\kdbp.c" />
     <ClCompile Include="kdimpl\report.c" />
     <ClCompile Include="kdimpl\kdmem.c" />
+    <ClCompile Include="hde64\hde64.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\kd.h" />
@@ -19,6 +20,8 @@
     <ClInclude Include="inc\kdapi.h" />
     <ClInclude Include="inc\uart.h" />
     <ClInclude Include="inc\pt.h" />
+    <ClInclude Include="hde64\hde64.h" />
+    <ClInclude Include="hde64\table64.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="communic\vmwrpc64.asm" />
