@@ -41,7 +41,7 @@
 #pragma pack( push, 1 )
 
 typedef struct _HDE64S {
-    UCHAR len;
+    UCHAR Length;
     UCHAR p_rep;
     UCHAR p_lock;
     UCHAR p_seg;

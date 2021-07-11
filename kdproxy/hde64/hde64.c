@@ -327,10 +327,10 @@ pref_done:
 
 disasm_done:
 
-    if ( ( hs->len = ( UCHAR )( p - ( UCHAR * )code ) ) > 15 ) {
+    if ( ( hs->Length = ( UCHAR )( p - ( UCHAR * )code ) ) > 15 ) {
         hs->flags |= F_ERROR | F_ERROR_LENGTH;
-        hs->len = 15;
+        hs->Length = 15;
     }
 
-    return ( unsigned int )hs->len;
+    return ( unsigned int )hs->Length;
 }

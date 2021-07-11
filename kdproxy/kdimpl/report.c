@@ -116,6 +116,7 @@ KdReportLoaded(
     NTSTATUS       ntStatus;
     KD_SYMBOL_INFO SymbolInfo;
     STRING         PathName;
+    ULONG64        SmapFlag;
 
     ntStatus = KdImageAddress( ImagePath,
         ( PVOID* )&SymbolInfo.BaseAddress,
@@ -126,11 +127,23 @@ KdReportLoaded(
     }
 
     SymbolInfo.ProcessId = 0x4;
-    __try {
+    if ( MmIsAddressValid( ( PVOID )SymbolInfo.BaseAddress ) ) {
 
-        SymbolInfo.CheckSum = *( ULONG32* )( ( PUCHAR )( SymbolInfo.BaseAddress + *( ULONG32* )( ( PCHAR )SymbolInfo.BaseAddress + 0x3c ) ) + 0x40 );
+        SmapFlag = __readcr4( ) & ( 1ULL << 21 );
+        __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
+
+        __try {
+
+            SymbolInfo.CheckSum = *( ULONG32* )( ( PUCHAR )( SymbolInfo.BaseAddress + *( ULONG32* )( ( PCHAR )SymbolInfo.BaseAddress + 0x3c ) ) + 0x40 );
+        }
+        __except ( TRUE ) {
+
+            SymbolInfo.CheckSum = 0;
+        }
+
+        __writecr4( __readcr4( ) | SmapFlag );
     }
-    __except ( TRUE ) {
+    else {
 
         SymbolInfo.CheckSum = 0;
     }

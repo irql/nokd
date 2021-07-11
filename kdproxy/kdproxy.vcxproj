@@ -167,6 +167,7 @@
   <ItemGroup>
     <ClInclude Include="hde64\hde64.h" />
     <ClInclude Include="hde64\table64.h" />
+    <ClInclude Include="inc\amd64.h" />
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kd.h" />
     <ClInclude Include="inc\kdapi.h" />

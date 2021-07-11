@@ -22,6 +22,7 @@
     <ClInclude Include="inc\pt.h" />
     <ClInclude Include="hde64\hde64.h" />
     <ClInclude Include="hde64\table64.h" />
+    <ClInclude Include="inc\amd64.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="communic\vmwrpc64.asm" />

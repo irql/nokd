@@ -88,7 +88,13 @@ KdpReadVirtualMemory(
     // 
     // MmNonPagedPoolStart, MmNonPagedPoolEnd
     //
+    // Kept reversing and realised the reason I have to prevent #PFs
+    // is because of paged memory, if memory is paged, then you can't read
+    // it in this state and breakpoints on paged memory is done via 
+    // KdSetOwedBreakpoints.
+    //
 
+#if 1
     if ( !MmIsAddressValid( ( PVOID )Packet->u.ReadMemory.TargetBaseAddress ) ||
          !MmIsAddressValid( ( PVOID )( Packet->u.ReadMemory.TargetBaseAddress + ReadCount - 1 ) ) ) {
 
@@ -113,7 +119,13 @@ KdpReadVirtualMemory(
             Packet->u.ReadMemory.ActualBytesRead = 0;
         }
     }
-
+#endif
+#if 0
+    Packet->ReturnStatus = MmDbgCopyMemory( Packet->u.ReadMemory.TargetBaseAddress,
+                                            Body->Buffer,
+                                            ReadCount,
+                                            );
+#endif
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Buffer = ( PCHAR )Packet;
@@ -151,7 +163,7 @@ KdpWriteVirtualMemory(
 
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         Packet->u.WriteMemory.TransferCount = 0;
-}
+    }
     else {
         //
         // Currently, not bothered to make this HVCI compliant,

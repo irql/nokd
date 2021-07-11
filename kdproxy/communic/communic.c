@@ -14,6 +14,10 @@ PVOID            KdpNmiHandle = NULL;
 //
 PKD_PROCESSOR    KdProcessorBlock;
 
+#if KD_SAFE_TRACE_POINTS
+VOLATILE BOOLEAN KdpTracing = FALSE;
+#endif
+
 BOOLEAN
 KdServiceInterrupt(
     _In_ PVOID   Context,
@@ -68,18 +72,75 @@ KdServiceInterrupt(
     EXCEPTION_RECORD64 ExceptRecord = { 0 };
     ULONG64            SmapFlag;
     ULONG64            WpFlag;
-    PKTRAP_FRAME       TrapFrame = ( PKTRAP_FRAME )(
-        ( ( ( ULONG64 )_AddressOfReturnAddress( ) + 0x1000 ) & ~0xFFF ) - sizeof( KTRAP_FRAME ) - 32 );
 
-    WpFlag = __readcr0( ) & ( 1ULL << 16 );
-    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+    //
+    // The system in place by windows, and shown
+    // inside KxNmiInterrupt's prologue, and KiRestoreProcessorState
+    // is very fucking disgusting. Half of the registers are saved to KTRAP_FRAME
+    // and the other half is on KEXCEPTION_FRAME, fortunately for us, these 
+    // structures are sequential on the stack.
+    //
 
-    SmapFlag = __readcr4( ) & ( 1ULL << 21 );
-    __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
+    PKTRAP_FRAME       TrapFrame;
+    PKEXCEPTION_FRAME  ExceptFrame;
+    KPROCESSOR_MODE    ProcessorMode;
+
+    //
+    // This seems a bit insane, and yes, I should probably read the
+    // stack address from the tss ist, but, this should 
+    // get the stack base, subtract 32 for the push of r8, rcx, rax, rdx,
+    // and then subtract the sizeof of KTRAP_FRAME, in order to get the address
+    // of the KTRAP_FRAME structure which is pushed for each interrupt handler.
+    // On another note, this would also break is kva shadowing is not enabled
+    // because the 32 bytes may not be pushed by the xxxShadow stub.
+    //
+    // TODO: Get it from the tss.
+    //
+
+    TrapFrame = ( PKTRAP_FRAME )( ( ( ( ULONG64 )_AddressOfReturnAddress( ) + 0x1000 ) & ~0xFFF ) - sizeof( KTRAP_FRAME ) - 32 );
+    ExceptFrame = ( PKEXCEPTION_FRAME )( ( ULONG64 )TrapFrame - sizeof( KEXCEPTION_FRAME ) );
+
+    //
+    // Processor mode is determined by the code segment RPL for
+    // interrupt handlers.
+    //
+
+    ProcessorMode = ( TrapFrame->SegCs & 1 ) == 1 ? UserMode : KernelMode;
 
     Prcb = KeGetCurrentPrcb( );
     ProcessorNumber = KdGetPrcbNumber( Prcb );
     TrapContext = KdGetPrcbContext( Prcb );
+
+    //
+    // Protect against real NMI's, this is a super unlikely condition
+    // unless other drivers are sending NMIs. We can assume it's meant
+    // for the debugger if the TrapContext->Rip points to cd 02.
+    //
+
+    SmapFlag = __readcr4( ) & ( 1ULL << 21 );
+    __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
+
+    if ( !KdpFrozen ) {
+
+        __try {
+
+            if ( memcmp( ( void* )( TrapContext->Rip - KdpBreakpointCodeLength ),
+                         KdpBreakpointCode,
+                         KdpBreakpointCodeLength ) != 0 ) {
+
+                __writecr4( __readcr4( ) | SmapFlag );
+                return FALSE;
+            }
+        }
+        __except ( TRUE ) {
+
+            __writecr4( __readcr4( ) | SmapFlag );
+            return FALSE;
+        }
+    }
+
+    WpFlag = __readcr0( ) & ( 1ULL << 16 );
+    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
 
     //
     // Handle a tracepoint on the current processor, this is very
@@ -94,11 +155,6 @@ KdServiceInterrupt(
     // and could crash the system because of the instruction pointer
     // never being re-aligned due to KDPR_FLAG_TPE not being set.
     //
-
-    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) {
-
-        KdPrint( "Tracepoint Processor nmi!\n" );
-    }
 
     if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE &&
          KdProcessorBlock[ ProcessorNumber ].Tracepoint == TrapContext->Rip - KdpBreakpointCodeLength ) {
@@ -200,15 +256,32 @@ KdServiceInterrupt(
         }
         else {
 
+            //
+            // TODO: Would be very nice to have a time-out watchdog, in-case an exception occurs
+            //       during tracing.
+            //
+
             YieldProcessor( );
         }
 
     }
 
+#if KD_SAFE_TRACE_POINTS
+    KdpTracing = ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) == KDPR_FLAG_TPE;
+
+    if ( ProcessorNumber == KdpFreezeOwner && !KdpTracing ) {
+#else
     if ( ProcessorNumber == KdpFreezeOwner ) {
+#endif
 
         KdThawProcessors( );
     }
+#if KD_SAFE_TRACE_POINTS
+    else {
+
+        KdpFrozenCount--;
+    }
+#endif
 
     if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) {
 
@@ -218,14 +291,136 @@ KdServiceInterrupt(
     __writecr4( __readcr4( ) | SmapFlag );
     __writecr0( __readcr0( ) | WpFlag );
 
-    TrapFrame->Rip = TrapContext->Rip;
+    //
+    // This is a re-implementation of KiRestoreProcessorState/KeContextToKframes/KxContextToKframes,
+    // windows has a truly awful system for saving and restoring the
+    // state of the processor between interrupts. This is because it's 
+    // split between two structures on the stack, KEXCEPTION_FRAME &
+    // KTRAP_FRAME. 
+    //
+    // TODO: KiRestoreProcessorControlState, RtlXRestore
+    //
+
+    if ( ( TrapContext->ContextFlags & CONTEXT_CONTROL ) == CONTEXT_CONTROL ) {
+
+        if ( ProcessorMode == KernelMode ) {
+
+            TrapContext->EFlags &= 0x250FD5;
+        }
+        else {
+
+            TrapContext->EFlags &= 0x210DD5;
+            TrapContext->EFlags |= 0x200;
+        }
+
+        TrapFrame->EFlags = TrapContext->EFlags;
+
+        TrapFrame->Rip = TrapContext->Rip;
+        TrapFrame->Rsp = TrapContext->Rsp;
+
+        if ( ProcessorMode == UserMode ) {
+
+            TrapFrame->SegSs = 0x2B;
+            if ( TrapFrame->SegCs != 0x33 ) {
+
+                TrapFrame->SegCs = 0x23;
+            }
+
+            if ( TrapFrame->SegCs == 0x23 ) {
+
+                //
+                // lmfao, nice validation.
+                //
+
+                TrapFrame->Rip <<= 16;
+                TrapFrame->Rip >>= 16;
+            }
+        }
+        else {
+
+            TrapFrame->SegCs = 0x10;
+            TrapFrame->SegSs = 0x18;
+        }
+    }
+
+    if ( ( TrapContext->ContextFlags & CONTEXT_INTEGER ) == CONTEXT_INTEGER ) {
+
+        TrapFrame->Rax = TrapContext->Rax;
+        TrapFrame->Rcx = TrapContext->Rcx;
+        TrapFrame->Rdx = TrapContext->Rdx;
+        TrapFrame->R8 = TrapContext->R8;
+        TrapFrame->R9 = TrapContext->R9;
+        TrapFrame->R10 = TrapContext->R10;
+        TrapFrame->R11 = TrapContext->R11;
+        TrapFrame->Rbp = TrapContext->Rbp;
+        ExceptFrame->Rbx = TrapContext->Rbx;
+        ExceptFrame->Rsi = TrapContext->Rsi;
+        ExceptFrame->Rdi = TrapContext->Rdi;
+        ExceptFrame->R12 = TrapContext->R12;
+        ExceptFrame->R13 = TrapContext->R13;
+        ExceptFrame->R14 = TrapContext->R14;
+        ExceptFrame->R15 = TrapContext->R15;
+    }
+
+    if ( ( TrapContext->ContextFlags & CONTEXT_XSTATE ) == CONTEXT_XSTATE ) {
+
+        //
+        // TODO: RtlXRestoreS/KiCopyXStateArea.
+        //
+    }
+
+    if ( ( TrapContext->ContextFlags & CONTEXT_FLOATING_POINT ) == CONTEXT_FLOATING_POINT ) {
+
+        TrapFrame->Xmm0 = TrapContext->Xmm0;
+        TrapFrame->Xmm1 = TrapContext->Xmm1;
+        TrapFrame->Xmm2 = TrapContext->Xmm2;
+        TrapFrame->Xmm3 = TrapContext->Xmm3;
+        TrapFrame->Xmm4 = TrapContext->Xmm4;
+        TrapFrame->Xmm5 = TrapContext->Xmm5;
+        ExceptFrame->Xmm6 = TrapContext->Xmm6;
+        ExceptFrame->Xmm7 = TrapContext->Xmm7;
+        ExceptFrame->Xmm8 = TrapContext->Xmm8;
+        ExceptFrame->Xmm9 = TrapContext->Xmm9;
+        ExceptFrame->Xmm10 = TrapContext->Xmm10;
+        ExceptFrame->Xmm11 = TrapContext->Xmm11;
+        ExceptFrame->Xmm12 = TrapContext->Xmm12;
+        ExceptFrame->Xmm13 = TrapContext->Xmm13;
+        ExceptFrame->Xmm14 = TrapContext->Xmm14;
+        ExceptFrame->Xmm15 = TrapContext->Xmm15;
+        TrapFrame->MxCsr = 0xFFBF/*KiMxCsrMask*/ & TrapContext->MxCsr;
+
+        if ( ProcessorMode == UserMode ) {
+
+            TrapContext->FltSave.MxCsr = _mm_getcsr( );
+            TrapContext->FltSave.ControlWord &= 0x1F3F;
+        }
+    }
+
+    if ( ( TrapContext->ContextFlags & CONTEXT_DEBUG_REGISTERS ) == CONTEXT_DEBUG_REGISTERS ) {
+
+        if ( ProcessorMode == UserMode ) {
+
+            TrapFrame->Dr0 = TrapContext->Dr0 > 0x7FFFFFFEFFFF ? 0 : TrapContext->Dr0;
+            TrapFrame->Dr1 = TrapContext->Dr1 > 0x7FFFFFFEFFFF ? 0 : TrapContext->Dr1;
+            TrapFrame->Dr2 = TrapContext->Dr2 > 0x7FFFFFFEFFFF ? 0 : TrapContext->Dr2;
+            TrapFrame->Dr3 = TrapContext->Dr3 > 0x7FFFFFFEFFFF ? 0 : TrapContext->Dr3;
+        }
+        else {
+            TrapFrame->Dr0 = TrapContext->Dr0;
+            TrapFrame->Dr1 = TrapContext->Dr1;
+            TrapFrame->Dr2 = TrapContext->Dr2;
+            TrapFrame->Dr3 = TrapContext->Dr3;
+        }
+
+        TrapFrame->Dr6 = 0;
+        TrapFrame->Dr7 = TrapContext->Dr7 & 0xFFFF0355;
+    }
 
     //
-    // TODO: Very unlikely, but if another component or faulty hardware
-    //       issues an NMI, we should not be returning TRUE, and we should
-    //       not really signal a state change, a work-around would be to check 
-    //       for CD 02, or/and signal when we use HalSendNMI.
+    // Very weird that they do this inside KeContextToKframes
     //
+
+    _fxrstor( &TrapContext->FltSave );
 
     return TRUE;
 }

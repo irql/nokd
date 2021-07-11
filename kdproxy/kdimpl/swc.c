@@ -344,13 +344,14 @@ KdpResendPacket:
                             // and you should have any far jumps or far returns in your
                             // code.
                             //
-                            // Instructions: LOOP/Z/NZ
+                            // Instructions: LOOP/Z/NZ, SYSCALL,
                             //
                             // Although this is a little weird, a good note is that rep
                             // prefixes are not accounted for, where as they are for
                             // trap flag usage.
                             //
                             // TODO: Sib bytes are not handled.
+                            //       Segment overrides are ignored.
                             //
                             // NOTE:
                             // Hde64 is quite disappointing, after writing this 500 or so line 

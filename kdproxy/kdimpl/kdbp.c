@@ -142,8 +142,6 @@ KdpDeleteBreakpoint(
         goto KdpProcedureDone;
     }
 
-    DbgPrint( "BP DELETED!\n" );
-
 KdpProcedureDone:
     Reciprocate.MaximumLength = sizeof( DBGKD_MANIPULATE_STATE64 );
     Reciprocate.Length = sizeof( DBGKD_MANIPULATE_STATE64 );
@@ -153,4 +151,13 @@ KdpProcedureDone:
                                        &Reciprocate,
                                        NULL,
                                        &KdpContext );
+}
+
+VOID
+KdPageFault(
+    _In_ ULONG64 FaultAddress
+)
+{
+    FaultAddress;
+    return;
 }

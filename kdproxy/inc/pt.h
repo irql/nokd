@@ -85,18 +85,19 @@ C_ASSERT( sizeof( MMPTE_HARDWARE ) == 8 );
 ( ( unsigned long long )( index1 ) << 12ULL ) |\
 ( ( ( unsigned long long )( index4 ) / 256 ) * 0xFFFF000000000000 ) ) )
 
+//
+// TODO: Make these shadow map safe.
+//
+
 CFORCEINLINE
 PMMPTE_HARDWARE
 MiGetPteAddress(
     _In_ ULONG_PTR Address
 )
 {
-    /*
     return &MiReferenceLevel2Entry( MiIndexLevel4( Address ),
                                     MiIndexLevel3( Address ),
                                     MiIndexLevel2( Address ) )[ MiIndexLevel1( Address ) ];
-                                    */
-    return ( PMMPTE_HARDWARE )( ( ( Address >> 9 ) & 0x7FFFFFFFF8i64 ) + 0xFFFFF68000000000 );
 }
 
 CFORCEINLINE
@@ -105,10 +106,8 @@ MiGetPdeAddress(
     _In_ ULONG_PTR Address
 )
 {
-    return ( PMMPTE_HARDWARE )( ( ( Address >> 18 ) & 0x3FFFFFF8 ) + 0xFFFFF6FB40000000 );
-    /*
     return &MiReferenceLevel3Entry( MiIndexLevel4( Address ),
-                                    MiIndexLevel3( Address ) )[ MiIndexLevel2( Address ) ];*/
+                                    MiIndexLevel3( Address ) )[ MiIndexLevel2( Address ) ];
 }
 
 CFORCEINLINE
@@ -117,6 +116,5 @@ MiGetPpeAddress(
     _In_ ULONG_PTR Address
 )
 {
-    return ( PMMPTE_HARDWARE )( ( ( Address >> 9 ) & 0x7FFFFFFFF8i64 ) + 0xFFFFF68000000000 );
-    //return &MiReferenceLevel4Entry( MiIndexLevel4( Address ) )[ MiIndexLevel3( Address ) ];
+    return &MiReferenceLevel4Entry( MiIndexLevel4( Address ) )[ MiIndexLevel3( Address ) ];
 }

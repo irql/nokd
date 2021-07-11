@@ -4,6 +4,8 @@
 #include <uart.h>
 #include <vmwrpc.h>
 #include <pt.h>
+#include <amd64.h>
+#include "../hde64/hde64.h"
 
 #if KD_DEBUG_NO_FREEZE 
 
@@ -114,6 +116,23 @@ DBGKD_GET_VERSION64         KdVersionBlock = {
 LIST_ENTRY                  KdpDebuggerDataListHead;
 ULONG64                     KdpLoaderDebuggerBlock = 0;
 KD_CONTEXT                  KdpContext;
+
+#if KD_PAGED_MEMORY_FIX
+ULONG64                     KdpOweCodeAddress;
+UCHAR                       KdpOweCodeOrig[ 27 ];
+BOOLEAN                     KdpOweBreakpoint = FALSE;
+
+UCHAR                       KdpOweCode[ ] = {
+    // mov      rcx, [rbp+y]
+    0x00, 0x00, 0x00, 0x00,
+    // call     qword ptr [rip+0x05]
+    0xFF, 0x15, 0x05, 0x00, 0x00, 0x00,
+    // jmp      x
+    0xE9, 0x00, 0x00, 0x00, 0x00,
+    // dq       ?
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+#endif
 
 VOID
 KdBreakTimerDpcCallback(
@@ -239,6 +258,10 @@ KdDriverUnload(
 {
     DriverObject;
 
+#if KD_PAGED_MEMORY_FIX
+    ULONG64            WpFlag;
+#endif
+
 #if KD_DEBUG_NO_FREEZE
 
     KdDebuggerNotPresent_ = TRUE;
@@ -250,6 +273,15 @@ KdDriverUnload(
 
 #else
     KeCancelTimer( &KdBreakTimer );
+#endif
+
+#if KD_PAGED_MEMORY_FIX
+    WpFlag = __readcr0( ) & ( 1ULL << 16 );
+    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+
+    memcpy( ( void* )KdpOweCodeAddress, KdpOweCodeOrig, 27 );
+
+    __writecr0( __readcr0( ) | WpFlag );
 #endif
 
     KdFreezeUnload( );
@@ -287,6 +319,15 @@ KdDriverLoad(
     PKDDEBUGGER_DATA64 KdDebuggerDataBlockDefault;
 #if !(KD_DEBUG_NO_FREEZE)
     LARGE_INTEGER      DueTime;
+#endif
+#if (KD_SET_NMI_DPL) || (KD_PAGED_MEMORY_FIX)
+    ULONG64            WpFlag;
+#endif
+#if KD_SET_NMI_DPL
+    ULONG32            CurrentProcessor;
+    KAFFINITY          PreviousAffinity;
+    KDESCRIPTOR_TABLE  Idtr;
+    PKIDT_GATE         Idt;
 #endif
 
     //
@@ -492,6 +533,32 @@ KdDriverLoad(
 
     MmIsSessionAddress = ( PVOID )( MmIsSessionAddressAddress );
 
+#if KD_PAGED_MEMORY_FIX
+
+    //
+    // Just changed this sig to use 0x50 for rbp offset,
+    // this should 100% always be 0x50 and rbp.
+    //
+    // Also turns out this sig is valid for the entire module,
+    // so I can remove the KiPageFault finding code.
+    //
+
+    KdpOweCodeAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionTextBase ),
+                                                        SectionTextSize,
+                                                        "80 3D ? ? ? ? 00 " // cmp   cs:KdpOweBreakpoint, 0
+                                                        "0F 84 ? ? ? ? "    // jz    x
+                                                        "48 8B 4D 50 "       // mov   rcx, [rbp+y]
+                                                        "E8 ? ? ? ? "       // call  KdSetOwedBreakpoints
+                                                        "E9 ? ? ? ?"        // jmp   x
+    );
+
+    if ( KdpOweCodeAddress == 0 ) {
+
+        DbgPrint( "KiPageFault owe code not found\n" );
+        return STATUS_UNSUCCESSFUL;
+    }
+#endif
+
 #if KD_UART_ENABLED
     if ( !NT_SUCCESS( KdUartInitialize( &KdDebugDevice ) ) ) {
 
@@ -552,9 +619,8 @@ KdDriverLoad(
     //
     // Inside nt!KeInitSystem, there is a call
     // to nt!KdEncodeDataBlock which means this variable
-    // has almost garbage data, to fix this, we simply
-    // call nt!KdDecodeDataBlock lol, what's the point 
-    // in this ms?
+    // has is just garbage data, to fix this we just call
+    // nt!KdDecodeDataBlock.
     //
     // TODO: Call KdEncodeDataBlock, otherwise this leads a
     //       detection vector.
@@ -570,7 +636,7 @@ KdDriverLoad(
     // This initialization is performed by nt!KdRegisterDebuggerDataBlock usually
     // we initialize the head, insert the flink and setup the header, this function
     // also plays with a spinlock & other stuff, but this function is only
-    // referenced at once initialization? 
+    // referenced once at initialization? 
     //
     // if ( KdpDebuggerDataListHead.Flink == NULL )  {
     //
@@ -612,6 +678,80 @@ KdDriverLoad(
     KdVersionBlock.PsLoadedModuleList = KdDebuggerDataBlock.PsLoadedModuleList;
     KdVersionBlock.KernBase = KdDebuggerDataBlock.KernBase;
 
+#if KD_SET_NMI_DPL
+
+    //
+    // TODO: This could be improved by just reading the idt base
+    //       from each KPCR, which is at offset 0x38.
+    //
+    // On another note, windows has KdVersionBlock on the Prcb at
+    // offset 0x108.
+    //
+
+    PreviousAffinity = 0;
+
+    for ( CurrentProcessor = 0;
+          CurrentProcessor < KeQueryActiveProcessorCountEx( 0xFFFF );
+          CurrentProcessor++ ) {
+
+        if ( CurrentProcessor == 0 ) {
+
+            PreviousAffinity = KeSetSystemAffinityThreadEx( ( KAFFINITY )( 1 << CurrentProcessor ) );
+        }
+        else {
+
+            KeSetSystemAffinityThreadEx( ( KAFFINITY )( 1 << CurrentProcessor ) );
+        }
+
+        __sidt( &Idtr );
+
+        //
+        // I don't really care about patchguard, this thing will
+        // blow up regardless.
+        //
+
+        WpFlag = __readcr0( ) & ( 1ULL << 16 );
+        __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+
+        Idt = ( PKIDT_GATE )Idtr.Base;
+        Idt[ 2 ].PrivilegeLevel = 3;
+
+        __writecr0( __readcr0( ) | WpFlag );
+    }
+
+    KeRevertToUserAffinityThreadEx( PreviousAffinity );
+
+#endif
+
+#if KD_PAGED_MEMORY_FIX
+
+    memcpy( KdpOweCodeOrig, ( void* )KdpOweCodeAddress, 27 );
+
+    //
+    // TODO: Synchronize.
+    //
+    // Just realised the argument doesn't really matter, 
+    // because KTRAP_FRAME is always on the stack during 
+    // interrupt handlers, and this contains the PFLA.
+    // Bit stupid of me, but eh
+    //
+
+    // mov      rcx, qword ptr [rbp+y]
+    *( ULONG32* )( KdpOweCode ) =  *( ULONG32* )( KdpOweCodeOrig + 13 );
+    // jmp      x
+    *( ULONG32* )( KdpOweCode + 11 ) =  *( ULONG32* )( KdpOweCodeOrig + 23 ) + 12;
+    // dq       ?
+    *( ULONG64* )( KdpOweCode + 15 ) = ( ULONG64 )KdPageFault;
+
+    WpFlag = __readcr0( ) & ( 1ULL << 16 );
+    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+
+    memcpy( ( void* )KdpOweCodeAddress, KdpOweCode, sizeof( KdpOweCode ) );
+
+    __writecr0( __readcr0( ) | WpFlag );
+
+#endif
+
     //
     // When kd breaks in there are some reads which I've logged here in a list.
     // Kernel base: 0xFFFFF801`3B21C000
@@ -630,7 +770,6 @@ KdDriverLoad(
     // nt!load_config_used              264
     //
     // nt!_NULL_IMPORT_DESCRIPTOR <PERF> (nt+0x13f00c) 128
-    // 
     //
 
     if ( !NT_SUCCESS( KdFreezeLoad( ) ) ) {
@@ -643,11 +782,6 @@ KdDriverLoad(
                                                                KeQueryActiveProcessorCountEx( 0xFFFF ),
                                                                'dKoN' );
 
-    KdPrint( "pte at: %p versus %p\n", MiGetPteAddress( ( ULONG_PTR )KdProcessorBlock ),
-             &MiReferenceLevel2Entry( MiIndexLevel4( ( ( ULONG_PTR )KdProcessorBlock ) ),
-                                      MiIndexLevel3( ( ( ULONG_PTR )KdProcessorBlock ) ),
-                                      MiIndexLevel2( ( ( ULONG_PTR )KdProcessorBlock ) ) )
-             [ MiIndexLevel1( ( ( ULONG_PTR )KdProcessorBlock ) ) ] );
     RtlZeroMemory( KdProcessorBlock,
                    sizeof( KD_PROCESSOR ) *
                    KeQueryActiveProcessorCountEx( 0xFFFF ) );
@@ -665,7 +799,7 @@ KdDriverLoad(
     //
 
     KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
-    //KdLoadSystem( );
+    KdLoadSystem( );
 
 #if KD_DEBUG_NO_FREEZE
 

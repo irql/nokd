@@ -32,6 +32,44 @@
 #define KD_BREAKPOINT_TABLE_LENGTH      32
 
 //
+// Tracepoints are implemented such that they're unsafe
+// on multiprocessor systems, this is because the 
+// following opcode is overwritten by a cd 02 bp,
+// this is then caught by the NMI handler,
+// every time this happens, all processors are 
+// resumed and another processor could hit the same
+// trace point, theoretically. Although a super slim
+// chance. This switch means only the tracing processor
+// will be resumed during this short time frame.
+//
+#define KD_SAFE_TRACE_POINTS            1
+
+//
+// This is a trick that will cause patchguard
+// to explode, when enabled, you can use user mode
+// breakpoints (until pg inevitably bugchecks) because
+// cd 02 will execute fine at cpl=3, instead of generating
+// a #GP.
+//
+#define KD_SET_NMI_DPL                  1
+
+//
+// When this is enabled, the driver will hook 
+// KiPageFault via a simple idt hook on vector 14, 
+// this hook is required to set breakpoints on paged
+// memory, the system sets KdpOweBreakpoint to 1,
+// which means KiPageFault will call KdSetOwedBreakpoints
+// after MmAccessFault.
+//
+#define KD_PAGED_MEMORY_FIX             1
+
+//
+// When enabled, this driver will attempt to bypass patchguard
+// using the same method described by ByePg
+//
+#define KD_BYPASS_PG_CAN1357
+
+//
 // Patterns for everything this driver requires.
 //
 
@@ -84,17 +122,6 @@ MmCopyMemory(
     _In_ SIZE_T  Length,
     _In_ ULONG   Flags,
     _In_ PSIZE_T TransferLength
-);
-
-NTSTATUS
-MmCopyVirtualMemory(
-    _In_  PEPROCESS       SourceProcess,
-    _In_  PVOID           SourceAddress,
-    _In_  PEPROCESS       TargetProcess,
-    _In_  PVOID           TargetAddress,
-    _In_  SIZE_T          Length,
-    _In_  KPROCESSOR_MODE PreviousMode,
-    _Out_ PSIZE_T         TransferLength
 );
 
 //
@@ -462,6 +489,11 @@ KdGetCurrentPrcbContext(
 PKSPECIAL_REGISTERS
 KdGetPrcbSpecialRegisters(
     _In_ ULONG_PTR Prcb
+);
+
+VOID
+KdPageFault(
+    _In_ ULONG64 FaultAddress
 );
 
 //
