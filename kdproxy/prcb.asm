@@ -12,7 +12,7 @@ KeGetCurrentPrcb PROC FRAME
     ;mov     eax, eax
     ;or      rax, rdx
     ;mov     rax, [rax+20h]
-    mov     rax, gs:[20h]
+    mov     rax, gs:[20h] ; __readgsqword(0x20) ???
     ret
 KeGetCurrentPrcb ENDP
 

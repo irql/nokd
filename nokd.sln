@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kdhide", "kdhide\kdhide.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kdproxy", "kdproxy\kdproxy.vcxproj", "{7DD664AF-5B66-4CF3-ABA0-352587688E02}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kdgdb", "kdgdb\kdgdb.vcxproj", "{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -67,6 +69,18 @@ Global
 		{7DD664AF-5B66-4CF3-ABA0-352587688E02}.Release|x86.ActiveCfg = Release|Win32
 		{7DD664AF-5B66-4CF3-ABA0-352587688E02}.Release|x86.Build.0 = Release|Win32
 		{7DD664AF-5B66-4CF3-ABA0-352587688E02}.Release|x86.Deploy.0 = Release|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|ARM.ActiveCfg = Debug|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|ARM64.ActiveCfg = Debug|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|x64.ActiveCfg = Debug|x64
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|x64.Build.0 = Debug|x64
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|x86.ActiveCfg = Debug|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Debug|x86.Build.0 = Debug|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|ARM.ActiveCfg = Release|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|ARM64.ActiveCfg = Release|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|x64.ActiveCfg = Release|x64
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|x64.Build.0 = Release|x64
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|x86.ActiveCfg = Release|Win32
+		{98FCCC02-E37E-4834-9B31-AEF536A2FC5C}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

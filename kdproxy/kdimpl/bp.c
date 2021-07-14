@@ -26,7 +26,7 @@ KdpAddBreakpoint(
     STRING  Reciprocate;
     ULONG32 CurrentBreakpoint;
     ULONG32 BreakpointHandle;
-
+#if !(KD_SET_NMI_DPL)
     if ( Packet->u.WriteBreakPoint.BreakPointAddress < 0x7FFFFFFEFFFF ) {
 
         //
@@ -41,6 +41,7 @@ KdpAddBreakpoint(
         Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
         goto KdpProcedureDone;
     }
+#endif
 
     BreakpointHandle = ( ULONG32 )-1;
     for ( CurrentBreakpoint = 0;
@@ -62,26 +63,44 @@ KdpAddBreakpoint(
 
     KdpBreakpointTable[ BreakpointHandle ].Address = Packet->u.WriteBreakPoint.BreakPointAddress;
     KdpBreakpointTable[ BreakpointHandle ].Process = PsGetCurrentProcess( );
+    KdpBreakpointTable[ BreakpointHandle ].Flags = 0;
 
-    __try {
+    if ( MmIsAddressValid( ( PVOID )KdpBreakpointTable[ BreakpointHandle ].Address ) ) {
 
-        RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Content,
-            ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
-                       0x20 );
+        __try {
 
-        RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
-                       KdpBreakpointCode,
-                       KdpBreakpointCodeLength );
+            RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Content,
+                ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
+                           0x20 );
 
-        //_mm_clflush( ( void* )KdpBreakpointTable[ BreakpointHandle ].Address );
-        KeSweepLocalCaches( );
+            RtlCopyMemory( ( void* )KdpBreakpointTable[ BreakpointHandle ].Address,
+                           KdpBreakpointCode,
+                           KdpBreakpointCodeLength );
 
-        Packet->ReturnStatus = STATUS_SUCCESS;
+            KeSweepLocalCaches( );
+
+            Packet->ReturnStatus = STATUS_SUCCESS;
+        }
+        __except ( TRUE ) {
+
+            DbgPrint( "write failed cr0=%x!\n", __readcr0( ) );
+            Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+            goto KdpProcedureDone;
+        }
     }
-    __except ( TRUE ) {
+    else {
 
-        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
-        goto KdpProcedureDone;
+        //
+        // This memory is most-likely paged-out, but yes, it could
+        // be invalid instead of paged-out, although that's irrelevant.
+        //
+
+#if KD_PAGED_MEMORY_FIX
+        KdpOweBreakpoint++;
+        KdOwePrepare( );
+#endif
+        Packet->ReturnStatus = STATUS_SUCCESS;
+        KdpBreakpointTable[ BreakpointHandle ].Flags |= KD_BPE_OWE;
     }
 
     Packet->u.WriteBreakPoint.BreakPointHandle = BreakpointHandle;
@@ -124,6 +143,15 @@ KdpDeleteBreakpoint(
         goto KdpProcedureDone;
     }
 
+    if ( ( KdpBreakpointTable[ BreakpointHandle ].Flags & KD_BPE_OWE ) == KD_BPE_OWE ) {
+
+        KdpOweBreakpoint--;
+        KdOwePrepare( );
+
+        Packet->ReturnStatus = STATUS_SUCCESS;
+        goto KdpProcedureDone;
+    }
+
     KdpBreakpointTable[ BreakpointHandle ].Flags &= ~KD_BPE_SET;
 
     Packet->ReturnStatus = STATUS_SUCCESS;
@@ -151,13 +179,4 @@ KdpProcedureDone:
                                        &Reciprocate,
                                        NULL,
                                        &KdpContext );
-}
-
-VOID
-KdPageFault(
-    _In_ ULONG64 FaultAddress
-)
-{
-    FaultAddress;
-    return;
 }

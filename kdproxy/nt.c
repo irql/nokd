@@ -280,6 +280,9 @@ KdLoadSystem(
     ULONG                Length;
     ULONG64              CurrentModule;
     PRTL_PROCESS_MODULES ModuleInformation;
+    KD_SYMBOL_INFO       SymbolInfo;
+    STRING               PathName;
+    ULONG64              SmapFlag;
 
     NtQuerySystemInformation( 11,
                               NULL,
@@ -318,6 +321,38 @@ KdLoadSystem(
             continue;
         }
 
+        SymbolInfo.ProcessId = 0x4;
+        SymbolInfo.BaseAddress = ( ULONG64 )ModuleInformation->Modules[ CurrentModule ].ImageBase;
+        SymbolInfo.SizeOfImage = ModuleInformation->Modules[ CurrentModule ].ImageSize;
+        if ( MmIsAddressValid( ( PVOID )SymbolInfo.BaseAddress ) ) {
+
+            SmapFlag = __readcr4( ) & ( 1ULL << 21 );
+            __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
+
+            __try {
+
+                SymbolInfo.CheckSum = *( ULONG32* )( ( PUCHAR )( SymbolInfo.BaseAddress + *( LONG32* )( ( PCHAR )SymbolInfo.BaseAddress + 0x3c ) ) + 0x40 );
+            }
+            __except ( TRUE ) {
+
+                SymbolInfo.CheckSum = 0;
+            }
+
+            __writecr4( __readcr4( ) | SmapFlag );
+        }
+        else {
+
+            SymbolInfo.CheckSum = 0;
+        }
+
+        RtlInitString( &PathName, ( PCHAR )ModuleInformation->Modules[ CurrentModule ].FullPathName +
+                       ModuleInformation->Modules[ CurrentModule ].OffsetToFileName );
+
+        KdReportLoadSymbolsStateChange( &PathName,
+                                        &SymbolInfo,
+                                        FALSE );
+
+#if 0
         //
         // TODO: This just calls into KdImageAddress which is a 
         //       copy of this function, to acquire address & size.
@@ -327,6 +362,7 @@ KdLoadSystem(
                                    ModuleInformation->Modules[ CurrentModule ].OffsetToFileName ),
                                    ( PCHAR )( ModuleInformation->Modules[ CurrentModule ].FullPathName +
                                               ModuleInformation->Modules[ CurrentModule ].OffsetToFileName ) );
+#endif
     }
 
     ExFreePoolWithTag( ModuleInformation, 'dKoN' );

@@ -3,12 +3,9 @@
 
 //
 // KD_DEBUG_NO_FREEZE creates a system thread, to poll for break-in,
-// this allows for DbgPrint's to be fed to DbgView of another tool,
-// with the default dpc method, you can't stay waiting in a dpc, can't use
-// waiting functions either, and just causes general issues, especially
-// for debugging.
+// this was only intended for use when debugging.
 //
-#define KD_DEBUG_NO_FREEZE      0
+#define KD_DEBUG_NO_FREEZE              0
 
 //
 // Haven't really tested the UART functionality, it was
@@ -16,14 +13,18 @@
 // It's significantly slower than vmwrpc, which is enabled
 // by default, also - sorry vbox users lol.
 //
-#define KD_UART_ENABLED         0
+// Although porting this to vbox should be very trivial, or even
+// any other interface due to the abstractions provided by
+// KD_DEBUG_DEVICE.
+//
+#define KD_UART_ENABLED                 0
 
 //
 // If this is enabled, then KdpSendWaitContinue will
 // log all packets received using a DbgPrint - this doesn't
 // display on the windbg instance for obvious reasons.
 //
-#define KD_RECV_PACKET_LOGGING  1
+#define KD_RECV_PACKET_LOGGING          0
 
 //
 // Breakpoint entry count of KdpBreakpointTable, 
@@ -41,6 +42,7 @@
 // trace point, theoretically. Although a super slim
 // chance. This switch means only the tracing processor
 // will be resumed during this short time frame.
+// Would recommend leaving enabled.
 //
 #define KD_SAFE_TRACE_POINTS            1
 
@@ -54,20 +56,51 @@
 #define KD_SET_NMI_DPL                  1
 
 //
-// When this is enabled, the driver will hook 
-// KiPageFault via a simple idt hook on vector 14, 
-// this hook is required to set breakpoints on paged
-// memory, the system sets KdpOweBreakpoint to 1,
-// which means KiPageFault will call KdSetOwedBreakpoints
-// after MmAccessFault.
+// When this is enabled, the driver will patch
+// a small snippet of code inside KiPageFault
+// to allow breakpoints & tracepoints to be set
+// on paged-out memory. This is unlikely to trigger
+// patchguard, but could, assuming patchguard scans during
+// a small unfortunate timeframe, or a breakpoint takes a long
+// time to be paged-in. The code is patched and reverted
+// for when it is needed to be executed.
 //
 #define KD_PAGED_MEMORY_FIX             1
 
 //
-// When enabled, this driver will attempt to bypass patchguard
-// using the same method described by ByePg
+// Does not bypass patchguard, I realised this is out of the scope of this 
+// project, and just abandonded it, half-written. I don't think ByePg
+// can be fixed up to work on 21354 anyways and this certainly wont work
+// in it's current state.
 //
-#define KD_BYPASS_PG_CAN1357
+#define KD_BYPASS_PG                    0
+
+//
+// This performs a KdPrint of different events surrounding
+// tracepoint operations. Just leave disabled. On another note:
+// hde64 might want to be replaced, it chokes on tons of instructions.
+//
+#define KD_TRACE_POINT_LOGGING          1
+
+//
+// When enabled, it will call KdLoadSystem which enumerates
+// all modules on the system and reports loaded symbols,
+// having this alongside "DbgBreakPoint() on start"/"Stop
+// debugger automatically" may cause issues because the debugger
+// is always prompted to break-in when reporting a load-symbol-state-change.
+//
+// The alternative is to just type .reload, and windbg will search and load all modules.
+//
+// TODO: Consider adding callbacks like: 
+//       PsSetLoadImageNotifyRoutine, 
+//       KeRegisterBugCheckCallback,
+//       DbgSetDebugPrintCallback
+//
+//! This seems slightly buggy, would recommend using .reload instead.
+//! Would like to fix the issue with this in the future, but for now
+//! it is irrelevant.
+//
+#define KD_LOAD_SYSTEM_SYMBOLS          0
 
 //
 // Patterns for everything this driver requires.
@@ -93,9 +126,8 @@
 " \\/_/\\/_/\\/___/  \\/_/\\/_/\\/__,_ /\n" \
 "\n"
 
-#define KD_SYMBOLIC_NAME    "kd"
+#define KD_SYMBOLIC_NAME    "kdproxy"
 #define KD_FILE_NAME        "kdproxy.sys"
-
 
 #include <ntifs.h>
 
@@ -249,6 +281,7 @@ typedef struct _KD_DEBUG_DEVICE {
 } KD_DEBUG_DEVICE, *PKD_DEBUG_DEVICE;
 
 #define KD_BPE_SET      (0x00000001)
+#define KD_BPE_OWE      (0x00000002)
 
 typedef struct _KD_BREAKPOINT_ENTRY {
     PEPROCESS Process;
@@ -285,7 +318,9 @@ typedef enum _KD_SERVICE_NUMBER {
     KdServiceStateChange
 } KD_SERVICE_NUMBER, *PKD_SERVICE_NUMBER;
 
-#define KDPR_FLAG_TPE   0x00000001
+#define KDPR_FLAG_TP_ENABLE     (0x00000001)
+#define KDPR_FLAG_TP_OWE        (0x00000002)
+#define KDPR_FLAG_TP_OWE_NO_INC (0x00000004)
 
 typedef struct _KD_PROCESSOR {
     ULONG32 Flags;
@@ -496,6 +531,39 @@ KdPageFault(
     _In_ ULONG64 FaultAddress
 );
 
+VOID
+KdSetTracepoint(
+    _In_ CONTEXT* Context
+);
+
+VOID
+KdOweTracepoint(
+    _In_ ULONG32 Processor
+);
+
+VOID
+KeBugCheckExHook(
+    _In_ ULONG     BugCheckCode,
+    _In_ ULONG_PTR BugCheckParameter1,
+    _In_ ULONG_PTR BugCheckParameter2,
+    _In_ ULONG_PTR BugCheckParameter3
+);
+
+BOOLEAN
+KdBugCheckEx(
+    _In_ ULONG     BugCheckCode,
+    _In_ ULONG_PTR BugCheckParameter1,
+    _In_ ULONG_PTR BugCheckParameter2,
+    _In_ ULONG_PTR BugCheckParameter3
+);
+
+#if KD_PAGED_MEMORY_FIX
+VOID
+KdOwePrepare(
+
+);
+#endif
+
 //
 // IMPORTS
 //
@@ -567,7 +635,6 @@ EXTERN_C PBOOLEAN            KdPitchDebugger;
 EXTERN_C PULONG              KdpDebugRoutineSelect;
 
 EXTERN_C BOOLEAN             KdDebuggerNotPresent_;
-EXTERN_C BOOLEAN             KdEnteredDebugger;
 EXTERN_C KTIMER              KdBreakTimer;
 EXTERN_C KDPC                KdBreakDpc;
 
@@ -591,3 +658,17 @@ EXTERN_C ULONG               KdpBreakpointCodeLength;
 EXTERN_C UCHAR               KdpBreakpointCode[ ];
 
 EXTERN_C PKD_PROCESSOR       KdProcessorBlock;
+
+#if KD_PAGED_MEMORY_FIX
+EXTERN_C ULONG64             KdpOweCodeAddress;
+EXTERN_C VOLATILE ULONG64    KdpOweBreakpoint;
+EXTERN_C VOLATILE ULONG64    KdpOweTracepoint;
+EXTERN_C UCHAR               KdpOweCodeOrig[ 23 ];
+EXTERN_C UCHAR               KdpOweCodeHook[ 23 ];
+#endif
+
+#if KD_BYPASS_PG
+EXTERN_C ULONG64             KdpBugCheckExAddress;
+EXTERN_C UCHAR               KdpBugCheckExOrig[ 20 ];
+EXTERN_C UCHAR               KdpBugCheckExCode[ 20 ];
+#endif

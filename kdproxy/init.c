@@ -70,7 +70,6 @@ PBOOLEAN                    KdPitchDebugger;
 PULONG                      KdpDebugRoutineSelect;
 
 BOOLEAN                     KdDebuggerNotPresent_;
-BOOLEAN                     KdEnteredDebugger;
 KTIMER                      KdBreakTimer;
 KDPC                        KdBreakDpc;
 
@@ -119,10 +118,10 @@ KD_CONTEXT                  KdpContext;
 
 #if KD_PAGED_MEMORY_FIX
 ULONG64                     KdpOweCodeAddress;
-UCHAR                       KdpOweCodeOrig[ 27 ];
-BOOLEAN                     KdpOweBreakpoint = FALSE;
-
-UCHAR                       KdpOweCode[ ] = {
+VOLATILE ULONG64            KdpOweBreakpoint = 0;
+VOLATILE ULONG64            KdpOweTracepoint = 0;
+UCHAR                       KdpOweCodeOrig[ 23 ];
+UCHAR                       KdpOweCodeHook[ 23 ] = {
     // mov      rcx, [rbp+y]
     0x00, 0x00, 0x00, 0x00,
     // call     qword ptr [rip+0x05]
@@ -131,6 +130,19 @@ UCHAR                       KdpOweCode[ ] = {
     0xE9, 0x00, 0x00, 0x00, 0x00,
     // dq       ?
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+#endif
+
+#if KD_BYPASS_PG
+ULONG64                     KdpBugCheckExAddress;
+UCHAR                       KdpBugCheckExOrig[ 20 ];
+UCHAR                       KdpBugCheckExCode[ 20 ] = {
+    // call     qword ptr [rip]
+    0xFF, 0x15, 0x00, 0x00, 0x00, 0x00,
+    // dq       ?
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // nop padding
+    0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
 };
 #endif
 
@@ -258,10 +270,6 @@ KdDriverUnload(
 {
     DriverObject;
 
-#if KD_PAGED_MEMORY_FIX
-    ULONG64            WpFlag;
-#endif
-
 #if KD_DEBUG_NO_FREEZE
 
     KdDebuggerNotPresent_ = TRUE;
@@ -276,12 +284,9 @@ KdDriverUnload(
 #endif
 
 #if KD_PAGED_MEMORY_FIX
-    WpFlag = __readcr0( ) & ( 1ULL << 16 );
-    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
-
-    memcpy( ( void* )KdpOweCodeAddress, KdpOweCodeOrig, 27 );
-
-    __writecr0( __readcr0( ) | WpFlag );
+    KdpOweBreakpoint = 0;
+    KdpOweTracepoint = 0;
+    KdOwePrepare( );
 #endif
 
     KdFreezeUnload( );
@@ -320,20 +325,22 @@ KdDriverLoad(
 #if !(KD_DEBUG_NO_FREEZE)
     LARGE_INTEGER      DueTime;
 #endif
-#if (KD_SET_NMI_DPL) || (KD_PAGED_MEMORY_FIX)
-    ULONG64            WpFlag;
-#endif
 #if KD_SET_NMI_DPL
     ULONG32            CurrentProcessor;
     KAFFINITY          PreviousAffinity;
     KDESCRIPTOR_TABLE  Idtr;
     PKIDT_GATE         Idt;
+    ULONG64            WpFlag;
 #endif
 
     //
-    //////////////////////////////////////////////////////////////////////
-    //      ALL NOTES ON KD DETECTION VECTORS AND KD RELATED SHIT.      //
-    //////////////////////////////////////////////////////////////////////
+    // This kd implementation doesn't implement 
+    // KdpPowerSpinLock/KdpPowerListHead,
+    // however this is not relevant to us really.
+    //
+    // Doesn't implement KdpTimeSlipDpc/KdpTimeSlipTimer,
+    // this is what's responsible for commands like .kill and
+    // calling functions ie KiCallUsermode.
     //
 
     DriverObject->DriverUnload = KdDriverUnload;
@@ -557,6 +564,8 @@ KdDriverLoad(
         DbgPrint( "KiPageFault owe code not found\n" );
         return STATUS_UNSUCCESSFUL;
     }
+
+    DbgPrint( "KiPageFault owe code: %p\n", KdpOweCodeAddress );
 #endif
 
 #if KD_UART_ENABLED
@@ -613,7 +622,6 @@ KdDriverLoad(
 
     //*KdpDebugRoutineSelect = 0;
 
-    KdEnteredDebugger = FALSE;
     KdDebuggerNotPresent_ = FALSE;
 
     //
@@ -723,35 +731,6 @@ KdDriverLoad(
 
 #endif
 
-#if KD_PAGED_MEMORY_FIX
-
-    memcpy( KdpOweCodeOrig, ( void* )KdpOweCodeAddress, 27 );
-
-    //
-    // TODO: Synchronize.
-    //
-    // Just realised the argument doesn't really matter, 
-    // because KTRAP_FRAME is always on the stack during 
-    // interrupt handlers, and this contains the PFLA.
-    // Bit stupid of me, but eh
-    //
-
-    // mov      rcx, qword ptr [rbp+y]
-    *( ULONG32* )( KdpOweCode ) =  *( ULONG32* )( KdpOweCodeOrig + 13 );
-    // jmp      x
-    *( ULONG32* )( KdpOweCode + 11 ) =  *( ULONG32* )( KdpOweCodeOrig + 23 ) + 12;
-    // dq       ?
-    *( ULONG64* )( KdpOweCode + 15 ) = ( ULONG64 )KdPageFault;
-
-    WpFlag = __readcr0( ) & ( 1ULL << 16 );
-    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
-
-    memcpy( ( void* )KdpOweCodeAddress, KdpOweCode, sizeof( KdpOweCode ) );
-
-    __writecr0( __readcr0( ) | WpFlag );
-
-#endif
-
     //
     // When kd breaks in there are some reads which I've logged here in a list.
     // Kernel base: 0xFFFFF801`3B21C000
@@ -760,8 +739,8 @@ KdDriverLoad(
     // KdDebuggerDataBlock              KdDebuggerDataBlock.Size
     // nt!NtBuildLabEx                  261
     // nt!PsLoadedModuleList            sizeof(LIST_ENTRY)
-    // FFFFBA03`32E73050                136                                 ???????
-    // FFFF8006`00402950                128                                 ???????
+    // FFFFBA03`32E73050                136                                 CurrentThread
+    // FFFF8006`00402950                128                                 PatchGuard?
     // nt!ExpSystemProcessName          128                                 
     // nt!ExpSystemProcessName+0x110    128
     // nt!ExpSystemProcessName+0x190    128
@@ -786,6 +765,64 @@ KdDriverLoad(
                    sizeof( KD_PROCESSOR ) *
                    KeQueryActiveProcessorCountEx( 0xFFFF ) );
 
+#if KD_BYPASS_PG
+
+    //
+    // Usually you would use a instruction length disassembler and fix up some
+    // stuff, but in this scenario the prologue is seemingly always the same,
+    // consistently so too, because of the lack of /O2 and using /Ox instead. So
+    // I will just re-implement it inside our hook, the previous prologue:
+    //
+    // .text:000000014041D4D0 48 89 4C 24 08                          mov     [rsp+BugCheckCode_1], rcx
+    // .text:000000014041D4D5 48 89 54 24 10                          mov     [rsp+BugCheckParameter1_1], rdx
+    // .text:000000014041D4DA 4C 89 44 24 18                          mov     [rsp+BugCheckParameter2_1], r8
+    // .text:000000014041D4DF 4C 89 4C 24 20                          mov     [rsp+BugCheckParameter3_1], r9
+    //
+    // PatchGuard doesn't call KeBugCheckEx/KeBugCheck2 but it has a 
+    // re-implementation, with a destroyed context, and I think it has 
+    // various worker threads performing different tasks.
+    //
+    // The below code hooks IoNotifyDump.
+    //
+
+    KdpBugCheckExAddress = ( ULONG64 )ImageBase + 0x391CD4;// KeBugCheckEx;
+
+    RtlCopyMemory( KdpBugCheckExOrig, ( void* )KdpBugCheckExAddress, 20 );
+
+    *( ULONG64* )( KdpBugCheckExCode + 6 ) = ( ULONG64 )KeBugCheckExHook;
+
+    WpFlag = __readcr0( ) & ( 1ULL << 16 );
+    __writecr0( __readcr0( ) & ~( 1ULL << 16 ) );
+
+    memcpy( ( void* )KdpBugCheckExAddress, KdpBugCheckExCode, sizeof( KdpBugCheckExCode ) );
+
+    __writecr0( __readcr0( ) | WpFlag );
+
+    //KeBugCheckEx( ( ULONG )STATUS_BREAKPOINT, 0, 0, 0, 0 );
+
+#endif
+
+#if KD_PAGED_MEMORY_FIX
+
+    RtlCopyMemory( KdpOweCodeOrig, ( void* )KdpOweCodeAddress, 23 );
+
+    //
+    // TODO: Synchronize.
+    //
+    // Just realised the argument doesn't really matter, 
+    // because KTRAP_FRAME is always on the stack during 
+    // interrupt handlers, and this contains the PFLA.
+    // Bit stupid of me, but eh
+    //
+
+    // mov      rcx, qword ptr [rbp+y]
+    *( ULONG32* )( KdpOweCodeHook ) =  *( ULONG32* )( KdpOweCodeOrig + 13 );
+    // jmp      x
+    *( ULONG32* )( KdpOweCodeHook + 11 ) =  ( ULONG32 )*( LONG32* )( KdpOweCodeAddress + 23 ) + 12;
+    // dq       ?
+    *( ULONG64* )( KdpOweCodeHook + 15 ) = ( ULONG64 )KdPageFault;
+#endif
+
     //
     // Gotta print our big ass ascii text of "nokd" after
     // loading, and before allowing a break-in, this wouldn't
@@ -799,7 +836,9 @@ KdDriverLoad(
     //
 
     KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
+#if KD_LOAD_SYSTEM_SYMBOLS
     KdLoadSystem( );
+#endif
 
 #if KD_DEBUG_NO_FREEZE
 

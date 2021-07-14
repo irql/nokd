@@ -4,14 +4,17 @@
     <ClCompile Include="init.c" />
     <ClCompile Include="nt.c" />
     <ClCompile Include="communic\vmwrpc.c" />
-    <ClCompile Include="communic\communic.c" />
     <ClCompile Include="communic\uart.c" />
     <ClCompile Include="kdimpl\kdapi.c" />
-    <ClCompile Include="kdimpl\swc.c" />
-    <ClCompile Include="kdimpl\kdbp.c" />
     <ClCompile Include="kdimpl\report.c" />
-    <ClCompile Include="kdimpl\kdmem.c" />
     <ClCompile Include="hde64\hde64.c" />
+    <ClCompile Include="kdimpl\loop.c" />
+    <ClCompile Include="pg.c" />
+    <ClCompile Include="kdimpl\freeze.c" />
+    <ClCompile Include="kdimpl\bp.c" />
+    <ClCompile Include="kdimpl\tp.c" />
+    <ClCompile Include="kdimpl\mem.c" />
+    <ClCompile Include="kdimpl\owe.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\kd.h" />
@@ -28,5 +31,6 @@
     <MASM Include="communic\vmwrpc64.asm" />
     <MASM Include="kdimpl\nmibp.asm" />
     <MASM Include="prcb.asm" />
+    <MASM Include="kdimpl\hook.asm" />
   </ItemGroup>
 </Project>

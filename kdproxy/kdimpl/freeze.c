@@ -3,6 +3,15 @@
 
 KD_DEBUG_DEVICE  KdDebugDevice;
 
+//
+// Variables for recovering from a hde64 branch/decode mis-predict.
+// This only works on multi-processor systems, but it should let
+// the system recover from a failed trace point. It uses 
+// KeQueryPerformanceCounter
+//
+VOLATILE ULONG64 KdpTraceTime;
+VOLATILE ULONG32 KdpTraceRecoverer;
+
 VOLATILE ULONG32 KdpFrozenCount = 0;
 VOLATILE ULONG32 KdpFreezeOwner;
 VOLATILE BOOLEAN KdpFrozen = FALSE;
@@ -72,6 +81,7 @@ KdServiceInterrupt(
     EXCEPTION_RECORD64 ExceptRecord = { 0 };
     ULONG64            SmapFlag;
     ULONG64            WpFlag;
+    KAFFINITY_EX       Affinity;
 
     //
     // The system in place by windows, and shown
@@ -120,7 +130,7 @@ KdServiceInterrupt(
     SmapFlag = __readcr4( ) & ( 1ULL << 21 );
     __writecr4( __readcr4( ) & ~( 1ULL << 21 ) );
 
-    if ( !KdpFrozen ) {
+    if ( !KdpFrozen && !KdpTracing ) {
 
         __try {
 
@@ -153,10 +163,10 @@ KdServiceInterrupt(
     // They're also quite dangerous for multi-processor because another
     // processor could hit the cd 02 tracepoint, which would be weird
     // and could crash the system because of the instruction pointer
-    // never being re-aligned due to KDPR_FLAG_TPE not being set.
+    // never being re-aligned due to KDPR_FLAG_TP_ENABLE not being set.
     //
 
-    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE &&
+    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TP_ENABLE &&
          KdProcessorBlock[ ProcessorNumber ].Tracepoint == TrapContext->Rip - KdpBreakpointCodeLength ) {
 
         RtlCopyMemory( ( void* )KdProcessorBlock[ ProcessorNumber ].Tracepoint,
@@ -164,10 +174,12 @@ KdServiceInterrupt(
                        0x20 );
 
         TrapContext->Rip -= KdpBreakpointCodeLength;
-        KdProcessorBlock[ ProcessorNumber ].Flags &= ~KDPR_FLAG_TPE;
+        KdProcessorBlock[ ProcessorNumber ].Flags &= ~KDPR_FLAG_TP_ENABLE;
 
         KeSweepLocalCaches( );
-        KdPrint( "Tracepoint caught! %p\n", TrapContext->Rip );
+#if KD_TRACE_POINT_LOGGING
+        KdPrint( "Tracepoint caught: %p\n", TrapContext->Rip );
+#endif
     }
 
     if ( !KdpFrozen ) {
@@ -262,12 +274,26 @@ KdServiceInterrupt(
             //
 
             YieldProcessor( );
+
+            if ( KdpTracing &&
+                 KdpFrozenCount != KeQueryActiveProcessorCountEx( 0xFFFF ) &&
+                 ProcessorNumber == KdpTraceRecoverer &&
+                 ( ULONG64 )KeQueryPerformanceCounter( 0 ).QuadPart + 0x1000 > KdpTraceTime ) {
+
+                Affinity.Count = 1;
+                Affinity.Size = 32;
+                RtlZeroMemory( &Affinity.Reserved, sizeof( KAFFINITY_EX ) - 4 );
+
+                Affinity.Bitmap[ KdpFreezeOwner / 64 ] &= ~( 1ull << ( KdpFreezeOwner % 64 ) );
+
+                HalSendNMI( &Affinity );
+            }
         }
 
     }
 
 #if KD_SAFE_TRACE_POINTS
-    KdpTracing = ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) == KDPR_FLAG_TPE;
+    KdpTracing = ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TP_ENABLE ) == KDPR_FLAG_TP_ENABLE;
 
     if ( ProcessorNumber == KdpFreezeOwner && !KdpTracing ) {
 #else
@@ -280,12 +306,24 @@ KdServiceInterrupt(
     else {
 
         KdpFrozenCount--;
+
+        if ( KeQueryActiveProcessorCountEx( 0xFFFF ) > 1 ) {
+
+            KdpTraceRecoverer = ProcessorNumber++;
+            if ( KdpTraceRecoverer >= KeQueryActiveProcessorCountEx( 0xFFFF ) ) {
+
+                KdpTraceRecoverer = 0;
+            }
+            KdpTraceTime = ( ULONG64 )KeQueryPerformanceCounter( 0 ).QuadPart;
+        }
     }
 #endif
 
-    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TPE ) {
+    if ( KdProcessorBlock[ ProcessorNumber ].Flags & KDPR_FLAG_TP_ENABLE ) {
 
+#if KD_TRACE_POINT_LOGGING
         KdPrint( "Tracepoint continue: %p -> %p\n", TrapFrame->Rip, TrapContext->Rip );
+#endif
     }
 
     __writecr4( __readcr4( ) | SmapFlag );
@@ -423,7 +461,7 @@ KdServiceInterrupt(
     _fxrstor( &TrapContext->FltSave );
 
     return TRUE;
-}
+    }
 
 NTSTATUS
 KdFreezeLoad(
