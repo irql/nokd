@@ -461,7 +461,7 @@ KdServiceInterrupt(
     _fxrstor( &TrapContext->FltSave );
 
     return TRUE;
-    }
+}
 
 NTSTATUS
 KdFreezeLoad(

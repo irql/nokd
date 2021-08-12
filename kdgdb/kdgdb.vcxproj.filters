@@ -2,5 +2,15 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="init.c" />
+    <ClCompile Include="gdb.c" />
+    <ClCompile Include="kd.c" />
+    <ClCompile Include="pdb.c" />
+    <ClCompile Include="socket.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="inc\kd.h" />
+    <ClInclude Include="inc\gdb.h" />
+    <ClInclude Include="inc\kdgdb.h" />
+    <ClInclude Include="inc\dbgeng.h" />
   </ItemGroup>
 </Project>

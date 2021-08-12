@@ -634,6 +634,11 @@ KdDriverLoad(
     //       detection vector.
     //
 
+    //
+    // TODO: Im an idiot, and didn't realise this is already initialized no matter
+    //       what.
+    //
+
     KdDecodeDataBlock( );
 
     RtlCopyMemory( &KdDebuggerDataBlock,
@@ -751,6 +756,37 @@ KdDriverLoad(
     // nt!_NULL_IMPORT_DESCRIPTOR <PERF> (nt+0x13f00c) 128
     //
 
+    //
+    // This comment is from weeks after the original one, above this,
+    // when debugging with kdgdb I decided to symbolise logged reads.
+    // 
+    // Kernel base = 0xfffff80225005000
+    //
+    /*
+    DbgKdReadVirtualMemoryApi Address: fffff80225c452d0 Length: 00000008 Status: 00000000 Symbol: KdpDebuggerDataListHead
+    DbgKdReadVirtualMemoryApi Address: fffff80225c070c0 Length: 00000018 Status: 00000000 Symbol: KdDebuggerDataBlock
+    DbgKdReadVirtualMemoryApi Address: fffff80225c070d8 Length: 00000368 Status: 00000000 Symbol: KdDebuggerDataBlock+24
+    DbgKdReadVirtualMemoryApi Address: fffff80225c53400 Length: 00000105 Status: 00000000 Symbol: NtBuildLabEx
+    DbgKdReadVirtualMemoryApi Address: fffff80225c2e5a0 Length: 00000010 Status: 00000000 Symbol: PsLoadedModuleList
+    DbgKdReadVirtualMemoryApi Address: ffffd7022ac6c3d0 Length: 00000088 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: ffffb201c5202370 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225005000 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225005110 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225005190 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225005210 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225005290 Length: 000004d8 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff8022500b730 Length: 00000108 Status: 00000000 Symbol: _load_config_used
+    DbgKdReadVirtualMemoryApi Address: fffff8022501a588 Length: 00000080 Status: 00000000 Symbol: ??_C@_0CB@KOMIGNHG@AslStringXmlSanitize?5failed?5?$FL?$CFx@+40
+    DbgKdReadVirtualMemoryApi Address: fffff8022514400c Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff8022514bc14 Length: 00000080 Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff8022504c650 Length: 00000080 Status: 00000000 Symbol: __xmm@c0010007c0010006c0010005c0010004+16
+    DbgKdReadVirtualMemoryApi Address: fffff80225144000 Length: 0000000c Status: 00000000
+    DbgKdReadVirtualMemoryApi Address: fffff80225c533e8 Length: 00000018 Status: 00000000 Symbol: CmNtCSDVersion
+    DbgKdReadVirtualMemoryApi Address: fffff80225029db8 Length: 00000080 Status: 00000000 Symbol: MmSystemRangeStart
+    DbgKdReadVirtualMemoryApi Address: fffff78000000268 Length: 00000080 Status: 00000000
+    */
+
+
     if ( !NT_SUCCESS( KdFreezeLoad( ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
@@ -809,7 +845,7 @@ KdDriverLoad(
     //
     // TODO: Synchronize.
     //
-    // Just realised the argument doesn't really matter, 
+    // Just realised the argument doesn't really matter,  
     // because KTRAP_FRAME is always on the stack during 
     // interrupt handlers, and this contains the PFLA.
     // Bit stupid of me, but eh
@@ -835,7 +871,7 @@ KdDriverLoad(
     // If you set breakpoint on start, then you may break-in here.
     //
 
-    KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
+    //KdReportLoaded( KD_SYMBOLIC_NAME ".sys", KD_FILE_NAME );
 #if KD_LOAD_SYSTEM_SYMBOLS
     KdLoadSystem( );
 #endif

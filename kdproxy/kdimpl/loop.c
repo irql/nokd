@@ -15,7 +15,7 @@ KdPollBreakIn(
         return TRUE;
     }
 
-    return KdDebugDevice.KdReceivePacket( KdTypePollBreakin,
+    return KdDebugDevice.KdReceivePacket( KdTypeCheckQueue,
                                           NULL,
                                           NULL,
                                           NULL,
@@ -316,7 +316,7 @@ KdpResendPacket:
                     KeBugCheck( D3DNIG_MAXIMUM );
                     break;
                 case DbgKdContinueApi2:
-                    if ( !NT_SUCCESS( Packet.u.Continue.ContinueStatus ) ) {
+                    if ( !NT_SUCCESS( Packet.u.Continue2.ContinueStatus ) ) {
 
                         return FALSE;
                     }

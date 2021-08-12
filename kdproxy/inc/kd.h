@@ -144,18 +144,6 @@
 //nonstandard extension used : bit field types other than int
 #pragma warning( disable : 4214 )
 
-#define MM_COPY_ADDRESS_PHYSICAL (0x00000001)
-#define MM_COPY_ADDRESS_VIRTUAL  (0x00000002)
-
-NTSTATUS
-MmCopyMemory(
-    _In_ PVOID   Target,
-    _In_ PVOID   Source,
-    _In_ SIZE_T  Length,
-    _In_ ULONG   Flags,
-    _In_ PSIZE_T TransferLength
-);
-
 //
 // Great function I stumbled across when searching for a way
 // to acquire KiProcessorBlock, not defined in headers but it is 

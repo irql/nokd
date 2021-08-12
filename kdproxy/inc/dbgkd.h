@@ -11,23 +11,18 @@
 #define ALIGN( x ) __declspec( align( x ) )
 #define ALIGN_PTR( x ) 
 
-#define __int8 char
-#define __int16 short
-#define __int32 int
-#define __int64 long long
-
 #pragma pack( push, 4 )
 
 /* 1400 */
 typedef struct ALIGN( 8 ) _DBGKD_LOAD_SYMBOLS64
 {
-    unsigned int PathNameLength;
-    unsigned int Padding0;
-    unsigned __int64 BaseOfDll;
-    unsigned __int64 ProcessId;
-    unsigned int CheckSum;
-    unsigned int SizeOfImage;
-    unsigned __int8 UnloadSymbols;
+    ULONG32 PathNameLength;
+    ULONG32 Padding0;
+    ULONG64 BaseOfDll;
+    ULONG64 ProcessId;
+    ULONG32 CheckSum;
+    ULONG32 SizeOfImage;
+    UCHAR   UnloadSymbols;
 } ALIGN( 8 ) DBGKD_LOAD_SYMBOLS64, *PDBGKD_LOAD_SYMBOLS64;
 
 C_ASSERT( FIELD_OFFSET( DBGKD_LOAD_SYMBOLS64, BaseOfDll ) == 8 );
@@ -37,164 +32,164 @@ C_ASSERT( sizeof( DBGKD_LOAD_SYMBOLS64 ) == 0x28 );
 /* 1401 */
 typedef struct ALIGN( 4 ) _DBGKD_LOAD_SYMBOLS32
 {
-    unsigned int PathNameLength;
-    unsigned int BaseOfDll;
-    unsigned int ProcessId;
-    unsigned int CheckSum;
-    unsigned int SizeOfImage;
-    unsigned __int8 UnloadSymbols;
+    ULONG32 PathNameLength;
+    ULONG32 BaseOfDll;
+    ULONG32 ProcessId;
+    ULONG32 CheckSum;
+    ULONG32 SizeOfImage;
+    UCHAR   UnloadSymbols;
 } ALIGN( 4 ) DBGKD_LOAD_SYMBOLS32, *ALIGN_PTR( 4 ) PDBGKD_LOAD_SYMBOLS32;
 
 /* 1402 */
 typedef struct _DBGKD_READ_MEMORY64
 {
-    unsigned __int64 TargetBaseAddress;
-    unsigned int TransferCount;
-    unsigned int ActualBytesRead;
+    ULONG64 TargetBaseAddress;
+    ULONG32 TransferCount;
+    ULONG32 ActualBytesRead;
 } DBGKD_READ_MEMORY64, *PDBGKD_READ_MEMORY64;
 
 /* 1403 */
 typedef struct _DBGKD_READ_MEMORY32
 {
-    unsigned int TargetBaseAddress;
-    unsigned int TransferCount;
-    unsigned int ActualBytesRead;
+    ULONG32 TargetBaseAddress;
+    ULONG32 TransferCount;
+    ULONG32 ActualBytesRead;
 } DBGKD_READ_MEMORY32, *PDBGKD_READ_MEMORY32;
 
 /* 1404 */
 typedef struct _DBGKD_WRITE_MEMORY64
 {
-    unsigned __int64 TargetBaseAddress;
-    unsigned int TransferCount;
-    unsigned int ActualBytesWritten;
+    ULONG64 TargetBaseAddress;
+    ULONG32 TransferCount;
+    ULONG32 ActualBytesWritten;
 } DBGKD_WRITE_MEMORY64, *PDBGKD_WRITE_MEMORY64;
 
 /* 1405 */
 typedef struct _DBGKD_WRITE_MEMORY32
 {
-    unsigned int TargetBaseAddress;
-    unsigned int TransferCount;
-    unsigned int ActualBytesWritten;
+    ULONG32 TargetBaseAddress;
+    ULONG32 TransferCount;
+    ULONG32 ActualBytesWritten;
 } DBGKD_WRITE_MEMORY32, *PDBGKD_WRITE_MEMORY32;
 
 /* 1406 */
 typedef struct ALIGN( 8 ) _DBGKD_WRITE_BREAKPOINT64
 {
-    unsigned __int64 BreakPointAddress;
-    unsigned int BreakPointHandle;
+    ULONG64 BreakPointAddress;
+    ULONG32 BreakPointHandle;
 } ALIGN( 8 ) DBGKD_WRITE_BREAKPOINT64, *ALIGN_PTR( 8 ) PDBGKD_WRITE_BREAKPOINT64;
 
 /* 1407 */
 typedef struct _DBGKD_WRITE_BREAKPOINT32
 {
-    unsigned int BreakPointAddress;
-    unsigned int BreakPointHandle;
+    ULONG32 BreakPointAddress;
+    ULONG32 BreakPointHandle;
 } DBGKD_WRITE_BREAKPOINT32, *PDBGKD_WRITE_BREAKPOINT32;
 
 /* 1408 */
 typedef struct _DBGKD_READ_WRITE_IO64
 {
-    unsigned __int64 IoAddress;
-    unsigned int DataSize;
-    unsigned int DataValue;
+    ULONG64 IoAddress;
+    ULONG32 DataSize;
+    ULONG32 DataValue;
 } DBGKD_READ_WRITE_IO64, *PDBGKD_READ_WRITE_IO64;
 
 /* 1409 */
 typedef struct _DBGKD_READ_WRITE_IO32
 {
-    unsigned int DataSize;
-    unsigned int IoAddress;
-    unsigned int DataValue;
+    ULONG32 DataSize;
+    ULONG32 IoAddress;
+    ULONG32 DataValue;
 } DBGKD_READ_WRITE_IO32, *PDBGKD_READ_WRITE_IO32;
 
 /* 1410 */
 typedef struct ALIGN( 8 ) _DBGKD_READ_WRITE_IO_EXTENDED64
 {
-    unsigned int DataSize;
-    unsigned int InterfaceType;
-    unsigned int BusNumber;
-    unsigned int AddressSpace;
-    unsigned __int64 IoAddress;
-    unsigned int DataValue;
+    ULONG32 DataSize;
+    ULONG32 InterfaceType;
+    ULONG32 BusNumber;
+    ULONG32 AddressSpace;
+    ULONG64 IoAddress;
+    ULONG32 DataValue;
 } ALIGN( 8 ) DBGKD_READ_WRITE_IO_EXTENDED64, *ALIGN_PTR( 8 ) PDBGKD_READ_WRITE_IO_EXTENDED64;
 
 /* 1411 */
 typedef struct _DBGKD_READ_WRITE_IO_EXTENDED32
 {
-    unsigned int DataSize;
-    unsigned int InterfaceType;
-    unsigned int BusNumber;
-    unsigned int AddressSpace;
-    unsigned int IoAddress;
-    unsigned int DataValue;
+    ULONG32 DataSize;
+    ULONG32 InterfaceType;
+    ULONG32 BusNumber;
+    ULONG32 AddressSpace;
+    ULONG32 IoAddress;
+    ULONG32 DataValue;
 } DBGKD_READ_WRITE_IO_EXTENDED32, *PDBGKD_READ_WRITE_IO_EXTENDED32;
 
 /* 1412 */
 typedef struct _DBGKD_SET_SPECIAL_CALL32
 {
-    unsigned int SpecialCall;
+    ULONG32 SpecialCall;
 } DBGKD_SET_SPECIAL_CALL32, *PDBGKD_SET_SPECIAL_CALL32;
 
 /* 1413 */
 typedef struct _DBGKD_SET_SPECIAL_CALL64
 {
-    unsigned __int64 SpecialCall;
+    ULONG64 SpecialCall;
 } DBGKD_SET_SPECIAL_CALL64, *PDBGKD_SET_SPECIAL_CALL64;
 
 /* 1414 */
 typedef struct _DBGKD_SET_INTERNAL_BREAKPOINT32
 {
-    unsigned int BreakpointAddress;
-    unsigned int Flags;
+    ULONG32 BreakpointAddress;
+    ULONG32 Flags;
 } DBGKD_SET_INTERNAL_BREAKPOINT32, *PDBGKD_SET_INTERNAL_BREAKPOINT32;
 
 /* 1415 */
-typedef struct __declspec( align( 8 ) ) _DBGKD_SET_INTERNAL_BREAKPOINT64
+typedef struct ALIGN( 8 ) _DBGKD_SET_INTERNAL_BREAKPOINT64
 {
-    unsigned __int64 BreakpointAddress;
-    unsigned int Flags;
+    ULONG64 BreakpointAddress;
+    ULONG32 Flags;
 } DBGKD_SET_INTERNAL_BREAKPOINT64, *PDBGKD_SET_INTERNAL_BREAKPOINT64;
 
 /* 1416 */
 typedef struct _DBGKD_GET_INTERNAL_BREAKPOINT64
 {
-    unsigned __int64 BreakpointAddress;
-    unsigned int Flags;
-    unsigned int Calls;
-    unsigned int MaxCallsPerPeriod;
-    unsigned int MinInstructions;
-    unsigned int MaxInstructions;
-    unsigned int TotalInstructions;
+    ULONG64 BreakpointAddress;
+    ULONG32 Flags;
+    ULONG32 Calls;
+    ULONG32 MaxCallsPerPeriod;
+    ULONG32 MinInstructions;
+    ULONG32 MaxInstructions;
+    ULONG32 TotalInstructions;
 } DBGKD_GET_INTERNAL_BREAKPOINT64, *PDBGKD_GET_INTERNAL_BREAKPOINT64;
 
 /* 1417 */
 typedef struct _DBGKD_GET_INTERNAL_BREAKPOINT32
 {
-    unsigned int BreakpointAddress;
-    unsigned int Flags;
-    unsigned int Calls;
-    unsigned int MaxCallsPerPeriod;
-    unsigned int MinInstructions;
-    unsigned int MaxInstructions;
-    unsigned int TotalInstructions;
+    ULONG32 BreakpointAddress;
+    ULONG32 Flags;
+    ULONG32 Calls;
+    ULONG32 MaxCallsPerPeriod;
+    ULONG32 MinInstructions;
+    ULONG32 MaxInstructions;
+    ULONG32 TotalInstructions;
 } DBGKD_GET_INTERNAL_BREAKPOINT32, *PDBGKD_GET_INTERNAL_BREAKPOINT32;
 
 /* 1418 */
 typedef struct _DBGKD_GET_CONTEXT
 {
-    unsigned int Unused;
+    ULONG32 Unused;
 } DBGKD_GET_CONTEXT, *PDBGKD_GET_CONTEXT;
 
 /* 1419 */
 typedef struct _DBGKD_SET_CONTEXT
 {
-    unsigned int ContextFlags;
+    ULONG32 ContextFlags;
 } DBGKD_SET_CONTEXT, *PDBGKD_SET_CONTEXT;
 
 /* 1420 */
 typedef struct _DBGKD_RESTORE_BREAKPOINT
 {
-    unsigned int BreakPointHandle;
+    ULONG32 BreakPointHandle;
 } DBGKD_RESTORE_BREAKPOINT, *PDBGKD_RESTORE_BREAKPOINT;
 
 /* 1421 */
@@ -206,60 +201,60 @@ typedef struct _DBGKD_CONTINUE
 /* 1422 */
 typedef struct __declspec( align( 4 ) ) _AMD64_DBGKD_CONTROL_SET
 {
-    unsigned int TraceFlag;
-    unsigned __int64 Dr7;
-    unsigned __int64 CurrentSymbolStart;
-    unsigned __int64 CurrentSymbolEnd;
+    ULONG32 TraceFlag;
+    ULONG64 Dr7;
+    ULONG64 CurrentSymbolStart;
+    ULONG64 CurrentSymbolEnd;
 } AMD64_DBGKD_CONTROL_SET, *PAMD64_DBGKD_CONTROL_SET;
 
 /* 1423 */
 typedef struct _X86_DBGKD_CONTROL_SET
 {
-    unsigned int TraceFlag;
-    unsigned int Dr7;
-    unsigned int CurrentSymbolStart;
-    unsigned int CurrentSymbolEnd;
+    ULONG32 TraceFlag;
+    ULONG32 Dr7;
+    ULONG32 CurrentSymbolStart;
+    ULONG32 CurrentSymbolEnd;
 } X86_DBGKD_CONTROL_SET, *PX86_DBGKD_CONTROL_SET;
 
 /* 1424 */
 typedef struct ALIGN( 4 ) _IA64_DBGKD_CONTROL_SET
 {
-    unsigned int Continue;
-    unsigned __int64 CurrentSymbolStart;
-    unsigned __int64 CurrentSymbolEnd;
+    ULONG32 Continue;
+    ULONG64 CurrentSymbolStart;
+    ULONG64 CurrentSymbolEnd;
 } ALIGN( 4 ) IA64_DBGKD_CONTROL_SET, *ALIGN_PTR( 4 ) PIA64_DBGKD_CONTROL_SET;
 
 /* 1425 */
 typedef struct _ARM_DBGKD_CONTROL_SET
 {
-    unsigned int Continue;
-    unsigned int CurrentSymbolStart;
-    unsigned int CurrentSymbolEnd;
+    ULONG32 Continue;
+    ULONG32 CurrentSymbolStart;
+    ULONG32 CurrentSymbolEnd;
 } ARM_DBGKD_CONTROL_SET, *PARM_DBGKD_CONTROL_SET;
 
 /* 1426 */
 typedef struct _ARM64_DBGKD_CONTROL_SET
 {
-    unsigned int Continue;
-    unsigned int TraceFlag;
-    unsigned __int64 CurrentSymbolStart;
-    unsigned __int64 CurrentSymbolEnd;
+    ULONG32 Continue;
+    ULONG32 TraceFlag;
+    ULONG64 CurrentSymbolStart;
+    ULONG64 CurrentSymbolEnd;
 } ARM64_DBGKD_CONTROL_SET, *PARM64_DBGKD_CONTROL_SET;
 
 /* 1427 */
 typedef struct _ARMCE_DBGKD_CONTROL_SET
 {
-    unsigned int Continue;
-    unsigned int CurrentSymbolStart;
-    unsigned int CurrentSymbolEnd;
+    ULONG32 Continue;
+    ULONG32 CurrentSymbolStart;
+    ULONG32 CurrentSymbolEnd;
 } ARMCE_DBGKD_CONTROL_SET, *PARMCE_DBGKD_CONTROL_SET;
 
 /* 1428 */
 typedef struct _PPC_DBGKD_CONTROL_SET
 {
-    unsigned int Continue;
-    unsigned int CurrentSymbolStart;
-    unsigned int CurrentSymbolEnd;
+    ULONG32 Continue;
+    ULONG32 CurrentSymbolStart;
+    ULONG32 CurrentSymbolEnd;
 } PPC_DBGKD_CONTROL_SET, *PPPC_DBGKD_CONTROL_SET;
 
 /* 1430 */
@@ -268,7 +263,7 @@ typedef struct _DBGKD_ANY_CONTROL_SET
     union ALIGN( 4 )
     {
         X86_DBGKD_CONTROL_SET X86ControlSet;
-        unsigned int AlphaControlSet;
+        ULONG32 AlphaControlSet;
         IA64_DBGKD_CONTROL_SET IA64ControlSet;
         AMD64_DBGKD_CONTROL_SET Amd64ControlSet;
         ARM_DBGKD_CONTROL_SET ArmControlSet;
@@ -292,7 +287,7 @@ typedef struct _DBGKD_CONTINUE2
 /* 1433 */
 typedef struct _DBGKD_QUERY_SPECIAL_CALLS
 {
-    unsigned int NumberOfSpecialCalls;
+    ULONG32 NumberOfSpecialCalls;
 } DBGKD_QUERY_SPECIAL_CALLS, *PDBGKD_QUERY_SPECIAL_CALLS;
 
 #if 0 // winh
@@ -301,18 +296,18 @@ typedef struct _DBGKD_GET_VERSION64
 {
     USHORT MajorVersion;
     USHORT MinorVersion;
-    unsigned __int8 ProtocolVersion;
-    unsigned __int8 KdSecondaryVersion;
+    UCHAR   ProtocolVersion;
+    UCHAR   KdSecondaryVersion;
     USHORT Flags;
     USHORT MachineType;
-    unsigned __int8 MaxPacketType;
-    unsigned __int8 MaxStateChange;
-    unsigned __int8 MaxManipulate;
-    unsigned __int8 Simulation;
+    UCHAR   MaxPacketType;
+    UCHAR   MaxStateChange;
+    UCHAR   MaxManipulate;
+    UCHAR   Simulation;
     USHORT Unused[ 1 ];
-    unsigned __int64 KernBase;
-    unsigned __int64 PsLoadedModuleList;
-    unsigned __int64 DebuggerDataList;
+    ULONG64 KernBase;
+    ULONG64 PsLoadedModuleList;
+    ULONG64 DebuggerDataList;
 } DBGKD_GET_VERSION64, *PDBGKD_GET_VERSION64;
 
 #else
@@ -363,16 +358,16 @@ typedef struct _DBGKD_GET_VERSION64 {
 /* 1435 */
 typedef struct _DBGKD_BREAKPOINTEX
 {
-    unsigned int BreakPointCount;
+    ULONG32 BreakPointCount;
     int ContinueStatus;
 } DBGKD_BREAKPOINTEX, *PDBGKD_BREAKPOINTEX;
 
 /* 1436 */
 typedef struct _DBGKD_READ_WRITE_MSR
 {
-    unsigned int Msr;
-    unsigned int DataValueLow;
-    unsigned int DataValueHigh;
+    ULONG32 Msr;
+    ULONG32 DataValueLow;
+    ULONG32 DataValueHigh;
 } DBGKD_READ_WRITE_MSR, *PDBGKD_READ_WRITE_MSR;
 
 
@@ -381,28 +376,28 @@ typedef struct ALIGN( 8 ) _DBGKD_SEARCH_MEMORY
 {
     union
     {
-        unsigned __int64 SearchAddress;
-        unsigned __int64 FoundAddress;
+        ULONG64 SearchAddress;
+        ULONG64 FoundAddress;
     };
-    unsigned __int64 SearchLength;
-    unsigned int PatternLength;
+    ULONG64 SearchLength;
+    ULONG32 PatternLength;
 } ALIGN( 8 ) DBGKD_SEARCH_MEMORY, *ALIGN_PTR( 8 ) PDBGKD_SEARCH_MEMORY;
 
 /* 1439 */
 typedef struct _DBGKD_GET_SET_BUS_DATA
 {
-    unsigned int BusDataType;
-    unsigned int BusNumber;
-    unsigned int SlotNumber;
-    unsigned int Offset;
-    unsigned int Length;
+    ULONG32 BusDataType;
+    ULONG32 BusNumber;
+    ULONG32 SlotNumber;
+    ULONG32 Offset;
+    ULONG32 Length;
 } DBGKD_GET_SET_BUS_DATA, *PDBGKD_GET_SET_BUS_DATA;
 
 /* 1440 */
 typedef struct _DBGKD_FILL_MEMORY
 {
-    unsigned __int64 Address;
-    unsigned int Length;
+    ULONG64 Address;
+    ULONG32 Length;
     USHORT Flags;
     USHORT PatternLength;
 } DBGKD_FILL_MEMORY, *PDBGKD_FILL_MEMORY;
@@ -410,10 +405,10 @@ typedef struct _DBGKD_FILL_MEMORY
 /* 1441 */
 typedef struct _DBGKD_QUERY_MEMORY
 {
-    unsigned __int64 Address;
-    unsigned __int64 Reserved;
-    unsigned int AddressSpace;
-    unsigned int Flags;
+    ULONG64 Address;
+    ULONG64 Reserved;
+    ULONG32 AddressSpace;
+    ULONG32 Flags;
 } DBGKD_QUERY_MEMORY, *PDBGKD_QUERY_MEMORY;
 
 C_ASSERT( FIELD_OFFSET( DBGKD_QUERY_MEMORY, Flags ) == 0x14 );
@@ -422,31 +417,31 @@ C_ASSERT( FIELD_OFFSET( DBGKD_QUERY_MEMORY, AddressSpace ) == 0x10 );
 /* 1442 */
 typedef struct _DBGKD_SWITCH_PARTITION
 {
-    unsigned int Partition;
+    ULONG32 Partition;
 } DBGKD_SWITCH_PARTITION, *PDBGKD_SWITCH_PARTITION;
 
 /* 1443 */
 typedef struct _DBGKD_CONTEXT_EX
 {
-    unsigned int Offset;
-    unsigned int ByteCount;
-    unsigned int BytesCopied;
+    ULONG32 Offset;
+    ULONG32 ByteCount;
+    ULONG32 BytesCopied;
 } DBGKD_CONTEXT_EX, *PDBGKD_CONTEXT_EX;
 
 /* 1444 */
 typedef struct ALIGN( 4 ) _DBGKD_WRITE_CUSTOM_BREAKPOINT
 {
-    unsigned __int64 BreakPointAddress;
-    unsigned __int64 BreakPointInstruction;
-    unsigned int BreakPointHandle;
-    unsigned __int8 BreakPointInstructionSize;
-    unsigned __int8 BreakPointInstructionAlignment;
+    ULONG64 BreakPointAddress;
+    ULONG64 BreakPointInstruction;
+    ULONG32 BreakPointHandle;
+    UCHAR   BreakPointInstructionSize;
+    UCHAR   BreakPointInstructionAlignment;
 } ALIGN( 4 ) DBGKD_WRITE_CUSTOM_BREAKPOINT, *ALIGN_PTR( 4 ) PDBGKD_WRITE_CUSTOM_BREAKPOINT;
 
 /* 1445 */
 typedef struct ALIGN( 8 ) _DBGKD_MANIPULATE_STATE64
 {
-    unsigned int ApiNumber;
+    ULONG32 ApiNumber;
     USHORT ProcessorLevel;
     USHORT Processor;
     int ReturnStatus;
@@ -489,22 +484,22 @@ typedef struct _DBGKD_GET_VERSION32
     USHORT MinorVersion;
     USHORT ProtocolVersion;
     USHORT Flags;
-    unsigned int KernBase;
-    unsigned int PsLoadedModuleList;
+    ULONG32 KernBase;
+    ULONG32 PsLoadedModuleList;
     USHORT MachineType;
     USHORT ThCallbackStack;
     USHORT NextCallback;
     USHORT FramePointer;
-    unsigned int KiCallUserMode;
-    unsigned int KeUserCallbackDispatcher;
-    unsigned int BreakpointWithStatus;
-    unsigned int DebuggerDataList;
+    ULONG32 KiCallUserMode;
+    ULONG32 KeUserCallbackDispatcher;
+    ULONG32 BreakpointWithStatus;
+    ULONG32 DebuggerDataList;
 } DBGKD_GET_VERSION32, *PDBGKD_GET_VERSION32;
 
 /* 1447 */
 typedef struct _DBGKD_MANIPULATE_STATE32
 {
-    unsigned int ApiNumber;
+    ULONG32 ApiNumber;
     USHORT ProcessorLevel;
     USHORT Processor;
     int ReturnStatus;
@@ -537,7 +532,7 @@ typedef struct _DBGKD_MANIPULATE_STATE32
 
 typedef struct ALIGN( 8 ) _DBGKM_EXCEPTION64 {
     EXCEPTION_RECORD64 ExceptionRecord;
-    unsigned int FirstChance;
+    ULONG32 FirstChance;
 } ALIGN( 8 ) DBGKM_EXCEPTION64, *ALIGN_PTR( 8 ) PDBGKM_EXCEPTION64;
 
 #pragma pack( pop )
@@ -705,7 +700,7 @@ typedef struct _DBGKD_WAIT_STATE_CHANGE {
         DBGKD_LOAD_SYMBOLS64 LoadSymbols;
         DBGKM_EXCEPTION64 Exception;
         char Pad[ 208 ];
-        // these is another type in this union for
+        // there is another type in this union for
         // command strings, and maybe more i missed
         // inside KdTrap
     } u;
@@ -1097,7 +1092,8 @@ typedef enum _KD_PACKET_TYPE {
     KdTypeResend          = 5,
     KdTypeReset           = 6,
     KdTypeStateChange     = 7,
-    KdTypePollBreakin     = 8,
+    KdTypeCheckQueue      = 8,
+    KdTypeTraceIo         = 9,
     KdTypeControlRequest  = 10,
     KdTypeFileIo          = 11,
 } KD_PACKET_TYPE, *PKD_PACKET_TYPE;
@@ -1148,3 +1144,8 @@ typedef struct _KPROCESSOR_STATE {
     KSPECIAL_REGISTERS SpecialRegisters;
     CONTEXT            ContextFrame;
 } KPROCESSOR_STATE, *PKPROCESSOR_STATE;
+
+#define AMD64_DEBUG_CONTROL_SPACE_PCR      0
+#define AMD64_DEBUG_CONTROL_SPACE_PRCB     1
+#define AMD64_DEBUG_CONTROL_SPACE_KSPECIAL 2
+#define AMD64_DEBUG_CONTROL_SPACE_THREAD   3

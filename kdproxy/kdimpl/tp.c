@@ -2,6 +2,16 @@
 #include <kd.h>
 #include "../hde64/hde64.h"
 
+//
+// This kinda sucks, but a few weeks after writing this,
+// I discovered windows already has the exact same shit 
+// already implemented, known as "KiDynamicTraceEnabled",
+// which emulates instructions too, and places bp's after
+// the currently executing one.
+//
+// => KiTpHandleTrap
+//
+
 NTSTATUS
 KdpTraceIncrementPc(
     _In_ ULONG64* Pc,

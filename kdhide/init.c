@@ -334,7 +334,6 @@ KdBreakTimerDpcCallback(
 
     __writeeflags( __readeflags( ) | Interrupts );
     KeLowerIrql( PreviousIrql );
-
 }
 
 VOID
@@ -372,10 +371,6 @@ KdDriverLoad(
     ULONG_PTR      KdTrapAddress;
     LARGE_INTEGER  DueTime;
 
-    //
-    //////////////////////////////////////////////////////////////////////
-    //      ALL NOTES ON KD DETECTION VECTORS AND KD RELATED SHIT.      //
-    //////////////////////////////////////////////////////////////////////
     //
     // 1. Prcb->DebuggerSavedIRQL is never restored to 0, if KdEnterDebugger is called
     //    this field is set, and never zeroed.
