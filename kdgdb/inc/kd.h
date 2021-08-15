@@ -22,6 +22,7 @@ EXTERN_C ULONG64             DbgKdNtosHeaders;
 EXTERN_C ULONG64             DbgKdProcessorBlock[ ];
 
 EXTERN_C DBG_CORE_ENGINE     DbgCoreEngine;
+EXTERN_C ULONG32             DbgKiFeatureSettings;
 
 typedef struct _DBGKD_BREAKPOINT_ENTRY {
     ULONG64 Address;

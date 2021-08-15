@@ -36,6 +36,8 @@ DBGPDB_CONTEXT      DbgPdbKernelContext;
 
 DBG_CORE_ENGINE     DbgCoreEngine;
 
+ULONG32             DbgKiFeatureSettings;
+
 ULONG32             DbgAmd64RegisterSizeTable[ ] = {
     8,
     8,
@@ -286,6 +288,11 @@ int main( ) {
     ULONG64                  KiProcessorBlockAddress;
     DBGKD_KVAS_STATE         KvaState;
 
+    ULONG32                  KiFeatureSettingsRva;
+    ULONG64                  KiFeatureSettingsAddress;
+    ULONG32                  KeNumberProcessorsRva;
+    ULONG64                  KeNumberProcessorsAddress;
+
     Status = DbgGdbInit( &DbgCoreEngine );
 
     if ( !DBG_SUCCESS( Status ) ) {
@@ -515,10 +522,6 @@ int main( ) {
 
     DbgPdbLoad( File, &DbgPdbKernelContext );
 
-    //KiWaitAlways
-    //KiWaitNever
-    //KdpDataBlockEncoded
-
     DbgPdbAddressOfName( &DbgPdbKernelContext,
                          L"KiWaitAlways",
                          &KiWaitAlwaysRva );
@@ -614,6 +617,30 @@ int main( ) {
     DbgKdpTraceLogLevel1( DbgKdpFactory,
                           "KiProcessorBlock => %016llx\n",
                           KiProcessorBlockAddress );
+
+    DbgPdbAddressOfName( &DbgPdbKernelContext,
+                         L"KeNumberProcessors",
+                         &KeNumberProcessorsRva );
+    KeNumberProcessorsAddress = DbgKdKernelBase + KeNumberProcessorsRva;
+    Status = DbgCoreEngine.DbgMemoryRead( &DbgCoreEngine,
+                                          KeNumberProcessorsAddress,
+                                          sizeof( ULONG32 ),
+                                          &DbgKdProcessorCount );
+    DbgKdpTraceLogLevel1( DbgKdpFactory,
+                          "KeNumberProcessors => %016llx\n",
+                          KeNumberProcessorsAddress );
+
+    DbgPdbAddressOfName( &DbgPdbKernelContext,
+                         L"KiFeatureSettings",
+                         &KiFeatureSettingsRva );
+    KiFeatureSettingsAddress = DbgKdKernelBase + KiFeatureSettingsRva;
+    Status = DbgCoreEngine.DbgMemoryRead( &DbgCoreEngine,
+                                          KiFeatureSettingsAddress,
+                                          sizeof( ULONG32 ),
+                                          &DbgKiFeatureSettings );
+    DbgKdpTraceLogLevel1( DbgKdpFactory,
+                          "KiFeatureSettings => %016llx\n",
+                          KiFeatureSettingsAddress );
 
     //
     // Write back the decoded debugger data block
@@ -845,7 +872,7 @@ int main( ) {
                                 printf( "%d", Nigzone );
                             }
                         }
-                }
+                    }
 #endif
                     break;
                 case DbgKdWriteVirtualMemoryApi:
@@ -993,8 +1020,8 @@ int main( ) {
                                      NULL,
                                      NULL );
                     break;
+                }
             }
-        }
             else {
 
                 DbgKdpTraceLogLevel1( DbgKdpFactory,
@@ -1002,12 +1029,12 @@ int main( ) {
                                       Manip.ApiNumber );
             }
 
-    } while ( DbgKdDebuggerEnabled );
+        } while ( DbgKdDebuggerEnabled );
 
-    DbgKdRestoreKvaShadow( &CodeContext, &KvaState );
-    DbgCoreEngine.DbgProcessorContinue( &DbgCoreEngine );
-    DbgCoreEngine.DbgCommDevice.DbgFlush( &DbgCoreEngine.DbgCommDevice.Extension );
-}
+        DbgKdRestoreKvaShadow( &CodeContext, &KvaState );
+        DbgCoreEngine.DbgProcessorContinue( &DbgCoreEngine );
+        DbgCoreEngine.DbgCommDevice.DbgFlush( &DbgCoreEngine.DbgCommDevice.Extension );
+    }
 
     //DbgGdbSendf( "D" );
     //closesocket( DbgGdbDevice.Ext.Sock.Socket );

@@ -1140,11 +1140,12 @@ DbgKdpGetSpecialRegisters(
     //
     SpecialRegisters->Cr0 = 0x80010001;
 
+    /*
     DbgCoreEngine.DbgRegisterRead( &DbgCoreEngine,
                                    Amd64RegisterCr3,
                                    &SpecialRegisters->Cr3 );
-
-    //SpecialRegisters->Cr3 = 0;
+    */
+    SpecialRegisters->Cr3 = 0;
     SpecialRegisters->Cr4 = 0;
 
     SpecialRegisters->Cr8 = 0;
@@ -1353,6 +1354,11 @@ DbgKdpWriteControlSpace(
     if ( Packet->u.ReadMemory.TargetBaseAddress == AMD64_DEBUG_CONTROL_SPACE_KSPECIAL ) {
 
         DbgKdpEmuDebugUpdate( &Special.KernelDr0 );
+#if 0
+        DbgCoreEngine.DbgRegisterWrite( &DbgCoreEngine,
+                                        Amd64RegisterCr3,
+                                        &Special.Cr3 );
+#endif
     }
 
     DbgKdSendPacket( KdTypeStateManipulate,
@@ -1676,6 +1682,12 @@ DbgKdStoreKvaShadow(
 
     ULONG32        ShadowFlags;
     ULONG64        KernelDirBase;
+
+    if ( ( DbgKiFeatureSettings & 2 ) != 0 ) {
+
+        KvaState->KvaShadow = 0;
+        return;
+    }
 
     if ( DbgKdpOffsetShadowFlags == 0 &&
          DbgKdpOffsetKernelDirBase == 0 ) {

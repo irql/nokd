@@ -1061,8 +1061,6 @@ DbgGdbAmd64Execute(
         Context->SegSs = DbgKdDebuggerBlock.GdtR0Data;
         Context->EFlags = 0x2;
 
-        Context->Rsp = SaveContext.Rsp;
-
         DbgKdpTraceLogLevel1( DbgGdbFactory,
                               "Executing at code base: %016llx\n",
                               DbgKdKvaSafeAddress );
