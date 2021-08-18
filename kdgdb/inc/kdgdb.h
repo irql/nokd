@@ -75,7 +75,8 @@ typedef struct _STRING {
 #define DbgKdpFactory                           "DbgKdp"
 #define DbgGdbFactory                           "DbgGdb"
 
-#define DbgKdpTraceLogLevel0( Factory, ... )    printf( "[" Factory "] " __VA_ARGS__ )
+#define DbgKdpTraceLogLevel0( Factory, ... )    
+//printf( "[" Factory "] " __VA_ARGS__ )
 #define DbgKdpTraceLogLevel1( Factory, ... )    printf( "[" Factory "] " __VA_ARGS__ )
 #define DbgKdpTraceLogLevel2( Factory, ... )    DbgKdPrint( "[" Factory "] " __VA_ARGS__ )
 

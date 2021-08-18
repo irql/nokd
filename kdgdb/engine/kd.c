@@ -1400,6 +1400,8 @@ DbgKdpInsertBreakpoint(
     DbgKdBreakpointTable[ Handle ].Address = Packet->u.WriteBreakPoint.BreakPointAddress;
     DbgKdBreakpointTable[ Handle ].Flags = DBGKD_BP_ENABLED;
 
+    Packet->u.WriteBreakPoint.BreakPointHandle = Handle;
+
     DbgCoreEngine.DbgBreakpointInsert( &DbgCoreEngine,
                                        BreakOnExecute,
                                        DbgKdBreakpointTable[ Handle ].Address,
@@ -1490,7 +1492,7 @@ DbgKdpEmuSingleUpdate(
         break;
     case DEBUG_READ_WRITE:
         DbgCoreEngine.DbgBreakpointInsert( &DbgCoreEngine,
-                                           BreakOnRead,//BreakOnAccess,
+                                           BreakOnAccess,
                                            Linear,
                                            Length );
         AssocBp->Flags = DBGKD_BP_ENABLED | DBGKD_BP_READ_WRITE | DBGKD_BP_WATCHPOINT;
