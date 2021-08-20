@@ -245,6 +245,78 @@ ULONG32             DbgAmd64RegisterSizeTable[ ] = {
     8,
 };
 
+ULONG64 DbgProgramStart;
+
+VOID
+DbgTimedLog(
+    _In_ PCHAR Format,
+    _In_ ...
+)
+{
+    CHAR    Buffer[ 512 ];
+    va_list List;
+    ULONG64 Tick;
+
+    Tick = GetTickCount64( ) - DbgProgramStart;
+
+    va_start( List, Format );
+    vsprintf( Buffer,
+              Format,
+              List );
+    printf( "[%03lld.%03lld.%-3lld] %s",
+            Tick / 1000 / 60,
+            ( Tick / 1000 ) - ( Tick / 1000 / 60 ) * 60,
+            Tick - ( ( Tick / 1000 ) * 1000 ),
+            Buffer );
+    va_end( List );
+}
+
+VOID
+DbgTimedKdPrint(
+    _In_ PCHAR Format,
+    _In_ ...
+)
+{
+    CHAR               Buffer[ 512 ];
+    CHAR               Buffer2[ 512 ];
+    va_list            List;
+    DBGKD_PRINT_STRING Print = { 0 };
+    STRING             Head;
+    STRING             Body;
+    ULONG64            Tick;
+
+    Tick = GetTickCount64( ) - DbgProgramStart;
+
+    Print.ProcessorLevel = 6;
+    Print.ApiNumber = 0x3230;
+    Print.Processor = 0;
+
+    Head.Buffer = ( PCHAR )&Print;
+    Head.Length = sizeof( DBGKD_PRINT_STRING );
+    Head.MaximumLength = sizeof( DBGKD_PRINT_STRING );
+
+    va_start( List, Format );
+    vsprintf( Buffer,
+              Format,
+              List );
+    va_end( List );
+    sprintf( Buffer2,
+             "[%08lld.%08lld] %s",
+             Tick / 1000,
+             Tick - ( ( Tick / 1000 ) * 1000 ),
+             Buffer );
+
+    Body.MaximumLength = 512;
+    Print.Length = ( ULONG32 )strlen( Buffer2 );
+    Body.Length = ( USHORT )Print.Length;
+    Body.Buffer = ( PCHAR )Buffer2;
+
+    DbgKdSendPacket( KdTypePrint,
+                     &Head,
+                     &Body,
+                     NULL );
+}
+
 int main( ) {
 
     DBG_STATUS               Status;
@@ -292,6 +364,8 @@ int main( ) {
     ULONG64                  KiFeatureSettingsAddress;
     ULONG32                  KeNumberProcessorsRva;
     ULONG64                  KeNumberProcessorsAddress;
+
+    DbgProgramStart = GetTickCount64( );
 
     Status = DbgGdbInit( &DbgCoreEngine );
 
@@ -357,7 +431,7 @@ int main( ) {
     }
 
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "IA32_MSR_LSTAR => %016llx\n",
+                          "IA32_MSR_LSTAR: %016llx\n",
                           DbgKdKernelBase );
     DbgKdKernelBase &= ~0xFFF;
 
@@ -383,7 +457,7 @@ int main( ) {
     } while ( DosHeader != IMAGE_DOS_SIGNATURE );
 
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "DbgKdKernelBase => %016llx\n",
+                          "DbgKdKernelBase: %016llx\n",
                           DbgKdKernelBase );
 
     //
@@ -450,7 +524,7 @@ int main( ) {
                            &CodeView->UniqueId,
                            CodeView->Age );
 
-    DbgKdpTraceLogLevel1( DbgKdpFactory, "Kernel PDB => %S\n", File );
+    DbgKdpTraceLogLevel1( DbgKdpFactory, "Kernel PDB: %S\n", File );
 
     FileHandle = CreateFileW( File,
                               FILE_READ_DATA,
@@ -471,14 +545,14 @@ int main( ) {
                               &CodeView->UniqueId,
                               CodeView->Age );
 
-        DbgKdpTraceLogLevel1( DbgKdpFactory, "Kernel PDB Downloading => %S\n", Url );
+        DbgKdpTraceLogLevel1( DbgKdpFactory, "Kernel PDB Downloading: %S\n", Url );
 
         DbgPdbDownload( Url,
                         NULL,
                         &Length );
 
         DbgKdpTraceLogLevel1( DbgKdpFactory,
-                              "Kernel PDB Length => %d\n",
+                              "Kernel PDB Length: %d\n",
                               Length );
 
         Pdb = VirtualAlloc( NULL,
@@ -531,7 +605,7 @@ int main( ) {
                                           sizeof( ULONG64 ),
                                           &KiWaitAlways );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KiWaitAlways => %016llx\n",
+                          "KiWaitAlways: %016llx\n",
                           KiWaitAlwaysAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
@@ -543,7 +617,7 @@ int main( ) {
                                           sizeof( ULONG64 ),
                                           &KiWaitNever );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KiWaitNever => %016llx\n",
+                          "KiWaitNever: %016llx\n",
                           KiWaitNeverAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
@@ -557,7 +631,7 @@ int main( ) {
                                           &KdpDataBlockEncodedValue );
 
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KdpDataBlockEncoded => %016llx\n", KdpDataBlockEncodedAddress );
+                          "KdpDataBlockEncoded: %016llx\n", KdpDataBlockEncodedAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
                          L"KdDebuggerDataBlock",
@@ -568,7 +642,7 @@ int main( ) {
                                           sizeof( KDDEBUGGER_DATA64 ),
                                           &DbgKdDebuggerBlock );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KdDebuggerDataBlock => %016llx\n", KdDebuggerDataBlockAddress );
+                          "KdDebuggerDataBlock: %016llx\n", KdDebuggerDataBlockAddress );
 
     if ( KdpDataBlockEncodedValue != 0 ) {
 
@@ -603,7 +677,7 @@ int main( ) {
                                           sizeof( DBGKD_GET_VERSION64 ),
                                           &DbgKdVersionBlock );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KdVersionBlock => %016llx\n",
+                          "KdVersionBlock: %016llx\n",
                           KdVersionBlockAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
@@ -615,7 +689,7 @@ int main( ) {
                                           sizeof( ULONG64 ) * DbgKdProcessorCount,
                                           &DbgKdProcessorBlock );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KiProcessorBlock => %016llx\n",
+                          "KiProcessorBlock: %016llx\n",
                           KiProcessorBlockAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
@@ -627,7 +701,7 @@ int main( ) {
                                           sizeof( ULONG32 ),
                                           &DbgKdProcessorCount );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KeNumberProcessors => %016llx\n",
+                          "KeNumberProcessors: %016llx\n",
                           KeNumberProcessorsAddress );
 
     DbgPdbAddressOfName( &DbgPdbKernelContext,
@@ -639,7 +713,7 @@ int main( ) {
                                           sizeof( ULONG32 ),
                                           &DbgKiFeatureSettings );
     DbgKdpTraceLogLevel1( DbgKdpFactory,
-                          "KiFeatureSettings => %016llx\n",
+                          "KiFeatureSettings: %016llx\n",
                           KiFeatureSettingsAddress );
 
     //
@@ -944,7 +1018,7 @@ int main( ) {
                     if ( Manip.u.Continue2.ControlSet.TraceFlag ) {
 
                         //
-                        // TODO: Error code => 80000004
+                        // TODO: Error code: 80000004
                         //
 
                         DbgKdRestoreKvaShadow( &CodeContext, &KvaState );

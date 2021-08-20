@@ -878,7 +878,7 @@ DbgGdbBreakpointInsert(
     String.MaximumLength = sizeof( DbgGdbMessageBuffer );
     String.Buffer = DbgGdbMessageBuffer;
 
-    DbgKdpTraceLogLevel1( DbgGdbFactory, "Breakpoint insert: %016llx\n", Address );
+    //DbgKdpTraceLogLevel1( DbgGdbFactory, "Breakpoint insert: %016llx\n", Address );
 
     DbgGdbSendf( Engine, "Z%d,%016llx,%d", DbgGdbBpTypeTable[ Breakpoint ], Address, Length );
 
@@ -899,7 +899,7 @@ DbgGdbBreakpointClear(
     String.MaximumLength = sizeof( DbgGdbMessageBuffer );
     String.Buffer = DbgGdbMessageBuffer;
 
-    DbgKdpTraceLogLevel1( DbgGdbFactory, "Breakpoint clear: %016llx\n", Address );
+    //DbgKdpTraceLogLevel1( DbgGdbFactory, "Breakpoint clear: %016llx\n", Address );
 
     DbgGdbSendf( Engine, "z%d,%016llx,1", DbgGdbBpTypeTable[ Breakpoint ], Address );
 

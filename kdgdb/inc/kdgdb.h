@@ -77,8 +77,14 @@ typedef struct _STRING {
 
 #define DbgKdpTraceLogLevel0( Factory, ... )    
 //printf( "[" Factory "] " __VA_ARGS__ )
-#define DbgKdpTraceLogLevel1( Factory, ... )    printf( "[" Factory "] " __VA_ARGS__ )
-#define DbgKdpTraceLogLevel2( Factory, ... )    DbgKdPrint( "[" Factory "] " __VA_ARGS__ )
+#define DbgKdpTraceLogLevel1( Factory, ... )    DbgTimedLog( "[" Factory "] " __VA_ARGS__ )
+#define DbgKdpTraceLogLevel2( Factory, ... )    DbgTimedKdPrint( "[" Factory "] " __VA_ARGS__ )
+
+VOID
+DbgTimedLog(
+    _In_ PCHAR Format,
+    _In_ ...
+);
 
 DBG_STATUS
 DbgGdbInit(
