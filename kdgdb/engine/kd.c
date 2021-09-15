@@ -1140,6 +1140,10 @@ DbgKdpGetSpecialRegisters(
     //
     SpecialRegisters->Cr0 = 0x80010001;
 
+    DbgCoreEngine.DbgRegisterRead( &DbgCoreEngine,
+                                   Amd64RegisterCr2,
+                                   &SpecialRegisters->Cr2 );
+
     /*
     DbgCoreEngine.DbgRegisterRead( &DbgCoreEngine,
                                    Amd64RegisterCr3,

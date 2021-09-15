@@ -12,6 +12,11 @@
 // => KiTpHandleTrap
 //
 
+//
+// NOTE: A LOT OF THIS CODE IS INCORRECT, UNFIXED BECAUSE THIS PROJECT
+//       IS UNUSED.
+//
+
 NTSTATUS
 KdpTraceIncrementPc(
     _In_ ULONG64* Pc,
@@ -103,7 +108,7 @@ KdpTraceIncrementPc(
 
             if ( HdeCode.p_66 ) {
                 IncTp += CodeLength;
-                IncTp += ( LONG64 )( LONG32 )HdeCode.imm.imm16;
+                IncTp += ( LONG64 )( USHORT )HdeCode.imm.imm16;
             }
             else {
                 IncTp += CodeLength;

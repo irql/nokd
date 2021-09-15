@@ -698,6 +698,7 @@ DbgGdbRegisterRead(
     ULONG64              Temp[ 4 ];
     DBGGDB_AMD64_EXECUTE Amd64Execute;
     UCHAR                MovCr3[ ] = { 0x0F, 0x20, 0xD8 };
+    UCHAR                MovCr2[ ] = { 0x0F, 0x20, 0xD0 };
 
     String.Length = 0;
     String.MaximumLength = sizeof( DbgGdbMessageBuffer );
@@ -715,6 +716,23 @@ DbgGdbRegisterRead(
 
         RtlCopyMemory( Content, Temp, DbgAmd64RegisterSizeTable[ RegisterId ] );
 
+        return DBG_STATUS_OKAY;
+    }
+    else if ( RegisterId == Amd64RegisterCr2 ) {
+#if 0
+        DbgGdbAmd64Execute( Engine,
+                            &Amd64Execute,
+                            MovCr2,
+                            1,
+                            3 );
+
+        Temp[ 0 ] = Amd64Execute.Rax;
+
+        RtlCopyMemory( Content, Temp, DbgAmd64RegisterSizeTable[ RegisterId ] );
+
+#endif
+        Temp[ 0 ] = 0;
+        RtlCopyMemory( Content, Temp, DbgAmd64RegisterSizeTable[ RegisterId ] );
         return DBG_STATUS_OKAY;
     }
     else {

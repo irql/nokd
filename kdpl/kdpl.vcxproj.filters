@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="kdpl.c" />
+    <ClCompile Include="comm\vmwrpc.c" />
+    <ClCompile Include="kdapi.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="comm\vmwrpc64.asm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="inc\kdpl.h" />
+    <ClInclude Include="inc\vmwrpc.h" />
+    <ClInclude Include="inc\dbgkd.h" />
+    <ClInclude Include="inc\kddef.h" />
+  </ItemGroup>
+</Project>
