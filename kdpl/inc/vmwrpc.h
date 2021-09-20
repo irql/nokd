@@ -1,8 +1,13 @@
 ﻿
 #pragma once
 
-NTSTATUS
+VOID
 KdVmwRpcInitialize(
+
+);
+
+NTSTATUS
+KdVmwRpcConnect(
 
 );
 

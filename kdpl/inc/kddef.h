@@ -142,8 +142,6 @@ KdPollBreakIn(
 
 );
 
-#define STATUS_RSC_LOAD_SYMBOLS ( ( NTSTATUS )( ( FACILITY_DEBUGGER << 16 ) | ( STATUS_SEVERITY_ERROR << 30 ) | ( 1 << 29 ) ) )
-
 KDAPI
 VOID
 KdReportStateChange(
@@ -153,7 +151,24 @@ KdReportStateChange(
 
 KDAPI
 VOID
+KdLoadSymbols(
+    _Inout_ PCONTEXT ContextRecord,
+    _In_    PCHAR    ImageName,
+    _In_    ULONG64  ImageBase,
+    _In_    ULONG32  ImageSize,
+    _In_    HANDLE   ProcessId,
+    _In_    BOOLEAN  Unload
+);
+
+KDAPI
+VOID
 KdPrint(
     _In_ PCHAR Format,
     _In_ ...
+);
+
+KDAPI
+NTSTATUS
+KdTryConnect(
+
 );

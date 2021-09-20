@@ -72,8 +72,17 @@ C_ASSERT( sizeof( STRING_HEAD ) == 4 );
 #pragma pack( pop )
 //C_ASSERT( sizeof( STRING_HEAD ) == FIELD_OFFSET( STRING, Buffer ) );
 
-NTSTATUS
+VOID
 KdVmwRpcInitialize(
+
+)
+{
+    KdDebugDevice.KdSendPacket = KdVmwRpcSendPacket;
+    KdDebugDevice.KdReceivePacket = KdVmwRpcRecvPacket;
+}
+
+NTSTATUS
+KdVmwRpcConnect(
 
 )
 {
@@ -85,9 +94,6 @@ KdVmwRpcInitialize(
 
         return ntStatus;
     }
-
-    KdDebugDevice.KdSendPacket = KdVmwRpcSendPacket;
-    KdDebugDevice.KdReceivePacket = KdVmwRpcRecvPacket;
 
     return NT_SUCCESS( KdVmwRpcInitProtocol( ) ) ? KdVmwRpcTestConnection( ) : STATUS_UNSUCCESSFUL;
 }
@@ -155,7 +161,7 @@ KdVmwRpcInitProtocol(
     }
 
     KdVmwRpcRecvCommandFinish( &KdDebugDevice.VmwRpc );
-#if 1
+#if 0
     DbgPrint( "KdVmwRpcInitProtocol version negotiation successful, %d.%d\n",
               KD_RPC_PROTOCOL_VERSION >> 16,
               KD_RPC_PROTOCOL_VERSION & 0xFFFF );
@@ -262,6 +268,19 @@ KdVmwRpcSendPacket(
 
     HeadLength = Head != NULL ? Head->Length : 0;
     BodyLength = Body != NULL ? Body->Length : 0;
+#if 0
+    if ( PacketType != KdTypePrint &&
+         KdDebuggerNotPresent_ ) {
+
+        // attempt a KdRefreshDebuggerNotPresent
+        KdPrint( "KDTARGET: Refreshing KD connection\n" );
+
+        if ( KdDebuggerNotPresent_ ) {
+
+            return KdStatusError;
+        }
+    }
+#endif
 
     while ( TRUE ) {
 

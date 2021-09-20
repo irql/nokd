@@ -25,7 +25,7 @@ UCHAR                       KdpMessageBuffer[ 0x1000 ];
 CHAR                        KdpPathBuffer[ 0x1000 ];
 
 PUSHORT                     KeProcessorLevel;
-ULONG32                     KdDebuggerNotPresent_;
+ULONG32                     KdDebuggerNotPresent_ = TRUE;
 
 KD_BREAKPOINT_ENTRY         KdpBreakpointTable[ KD_BREAKPOINT_TABLE_LENGTH ] = { 0 };
 
@@ -161,6 +161,43 @@ KdReportStateChange(
     KdpReportExceptionStateChange( &ExceptRecord,
                                    ContextRecord,
                                    FALSE );
+}
+
+VOID
+KdLoadSymbols(
+    _Inout_ PCONTEXT ContextRecord,
+    _In_    PCHAR    ImageName,
+    _In_    ULONG64  ImageBase,
+    _In_    ULONG32  ImageSize,
+    _In_    HANDLE   ProcessId,
+    _In_    BOOLEAN  Unload
+)
+{
+    KD_SYMBOL_INFO     Symbol;
+    LONG32             Elfanew;
+    STRING             PathName;
+
+    Symbol.BaseAddress = ImageBase;
+    Symbol.SizeOfImage = ImageSize;
+    Symbol.ProcessId = ( ULONG64 )ProcessId;
+
+    if ( NT_SUCCESS( DbgKdMmCopyMemory( &Elfanew,
+        ( PVOID )( ImageBase + 0x3C ),
+                                        sizeof( LONG32 ),
+                                        MM_COPY_MEMORY_VIRTUAL,
+                                        NULL ) ) ) {
+
+        Symbol.CheckSum = 0;
+        DbgKdMmCopyMemory( &Symbol.CheckSum,
+            ( PVOID )( ImageBase + Elfanew + 0x40 ),
+                           sizeof( ULONG32 ),
+                           MM_COPY_MEMORY_VIRTUAL,
+                           NULL );
+    }
+
+    RtlInitString( &PathName, ImageName );
+
+    KdpReportLoadSymbolsStateChange( &PathName, &Symbol, Unload, ContextRecord );
 }
 
 VOID
@@ -598,6 +635,22 @@ KdpResendPacket:
 }
 
 NTSTATUS
+KdTryConnect(
+
+)
+{
+
+    if ( !NT_SUCCESS( KdVmwRpcConnect( ) ) ) {
+
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    //KdDebuggerNotPresent_ = FALSE;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 KdDriverLoad(
 
 )
@@ -645,7 +698,49 @@ KdDriverLoad(
 
         return STATUS_UNSUCCESSFUL;
     }
+#if 0
+    KdDebuggerDataBlockAddress = ( ULONG64 )( KdCopyDataBlockAddress + 14 + ( LONG32 )DbgKdRead32( ( ULONG32* )( KdCopyDataBlockAddress + 10 ) ) );
 
+
+    KeProcessorLevelAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionTextBase ),
+                                                              SectionTextSize,
+                                                              "66 89 01 0F B7 05 ? ? ? ? 66 89 41 02" );
+
+    if ( KeProcessorLevelAddress == 0 ) {
+
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + ( LONG32 )DbgKdRead32( ( ULONG32* )( KeProcessorLevelAddress + 6 ) ) );
+
+
+    KdEncodeDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionPageLKBase ),
+                                                               SectionPageLKSize,
+                                                               "E8 ? ? ? ? 33 DB 48 8D 8F ? ? ? ?" );
+
+    KdEncodeDataBlockAddress =  KdEncodeDataBlockAddress + 5 + ( LONG64 )( LONG32 )DbgKdRead32( ( ULONG32* )( KdEncodeDataBlockAddress + 1 ) );
+
+    KiWaitNeverAddress = KdEncodeDataBlockAddress + 12;
+    KiWaitNeverAddress = ( ULONG64 )( KiWaitNeverAddress + 4 + ( LONG64 )( LONG32 )DbgKdRead32( ( ULONG32* )KiWaitNeverAddress ) );
+    KdpDataBlockEncodedAddress =  KdEncodeDataBlockAddress + 25;
+    KdpDataBlockEncodedAddress = ( ULONG64 )( KdpDataBlockEncodedAddress + 5 + ( LONG64 )( LONG32 )DbgKdRead32( ( ULONG32* )KdpDataBlockEncodedAddress ) );
+    KiWaitAlwaysAddress = KdEncodeDataBlockAddress + 49;
+    KiWaitAlwaysAddress = ( ULONG64 )( KiWaitAlwaysAddress + 4 + ( LONG64 )( LONG32 )DbgKdRead32( ( ULONG32* )KiWaitAlwaysAddress ) );
+
+    DbgKdMmCopyMemory( &KdDebuggerDataBlock,
+        ( PVOID )KdDebuggerDataBlockAddress,
+                       sizeof( KDDEBUGGER_DATA64 ),
+                       MM_COPY_MEMORY_VIRTUAL,
+                       NULL );
+#if 0
+    RtlCopyMemory( &KdDebuggerDataBlock,
+        ( PVOID )KdDebuggerDataBlockAddress,
+                   sizeof( KDDEBUGGER_DATA64 ) );
+#endif
+
+    KiWaitAlways = DbgKdRead64( ( ULONG64* )KiWaitAlwaysAddress );
+    KiWaitNever = DbgKdRead64( ( ULONG64* )KiWaitNeverAddress );
+#else
     KdDebuggerDataBlockAddress = ( ULONG64 )( KdCopyDataBlockAddress + 14 + *( LONG32 * )( KdCopyDataBlockAddress + 10 ) );
 
 
@@ -674,13 +769,6 @@ KdDriverLoad(
     KiWaitAlwaysAddress = KdEncodeDataBlockAddress + 49;
     KiWaitAlwaysAddress = ( ULONG64 )( KiWaitAlwaysAddress + 4 + ( LONG64 )*( LONG32* )( KiWaitAlwaysAddress ) );
 
-    if ( !NT_SUCCESS( KdVmwRpcInitialize( ) ) ) {
-
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    KdDebuggerNotPresent_ = FALSE;
-
     /*
     DbgKdMmCopyMemory( &KdDebuggerDataBlock,
                        KdDebuggerDataBlockAddress,
@@ -694,11 +782,13 @@ KdDriverLoad(
 
     KiWaitAlways = *( PULONG64 )KiWaitAlwaysAddress;
     KiWaitNever = *( PULONG64 )KiWaitNeverAddress;
+#endif
 
     //
     // DbgKdpDecodeDataBlock
     //
 
+    //if ( DbgKdRead8( ( UCHAR* )KdpDataBlockEncodedAddress ) ) {
     if ( *( UCHAR* )KdpDataBlockEncodedAddress ) {
 
 
@@ -745,6 +835,10 @@ KdDriverLoad(
     //
     // TODO: Should require a page fault hook.
     //
+
+    KdVmwRpcInitialize( );
+    KdTryConnect( );
+    KdDebuggerNotPresent_ = FALSE;
 
     return STATUS_SUCCESS;
 }
