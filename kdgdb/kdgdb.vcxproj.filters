@@ -2,10 +2,11 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="init.c" />
-    <ClCompile Include="gdb.c" />
-    <ClCompile Include="kd.c" />
     <ClCompile Include="pdb.c" />
-    <ClCompile Include="socket.c" />
+    <ClCompile Include="engine\gdb.c" />
+    <ClCompile Include="commdev\pipe.c" />
+    <ClCompile Include="commdev\socket.c" />
+    <ClCompile Include="engine\kd.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="inc\kd.h" />

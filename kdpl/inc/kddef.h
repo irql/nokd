@@ -65,8 +65,8 @@ typedef struct _KSPECIAL_REGISTERS {
 #define KDAPI   EXTERN_C
 #endif
 
-KDPLAPI ULONG64 MmKernelBase;
-KDPLAPI ULONG32 MmKernelSize;
+KDPLAPI ULONG64 KdKernelBase;
+KDPLAPI ULONG32 KdKernelSize;
 
 KDPLAPI
 PKPCR

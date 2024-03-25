@@ -110,14 +110,6 @@ EXTERN_C LIST_ENTRY                  KdpDebuggerDataListHead;
 EXTERN_C ULONG64                     KdpLoaderDebuggerBlock;
 EXTERN_C KD_CONTEXT                  KdpContext;
 
-EXTERN_C
-NTSTATUS
-KdImageAddress(
-    _In_      PCHAR  ImageName,
-    _Out_opt_ PVOID* ImageBase,
-    _Out_opt_ ULONG* ImageSize
-);
-
 #include "vmwrpc.h"
 #include "kddef.h"
 

@@ -357,12 +357,26 @@ KdpWriteControlSpace(
     ReadCount = min( KdTransportMaxPacketSize - sizeof( DBGKD_MANIPULATE_STATE64 ), ReadCount );
     ReadCount = min( Body->MaximumLength, ReadCount );
 
+    if (Packet->u.ReadMemory.TargetBaseAddress != AMD64_DEBUG_CONTROL_SPACE_KSPECIAL) {
+
+        // had some issues with this function, this is actually in the kernel to return unsuccessful 
+        // when it's not type 2, so I figured I'd just have it here too, 
+        // only real use is to set KSPECIAL tbh 
+        Packet->ReturnStatus = STATUS_UNSUCCESSFUL;
+        return KdDebugDevice.KdSendPacket(KdTypeStateManipulate,
+                                          &Reciprocate,
+                                          Body,
+                                          &KdpContext);
+    }
+
     switch ( Packet->u.ReadMemory.TargetBaseAddress ) {
     case AMD64_DEBUG_CONTROL_SPACE_PCR:
-        ControlSpace = &Pcr;
+        ControlSpace = ( PVOID )Pcr;
+        //ControlSpace = &Pcr;
         break;
     case AMD64_DEBUG_CONTROL_SPACE_PRCB:
-        ControlSpace = &Prcb;
+        ControlSpace = ( PVOID )Prcb;
+        //ControlSpace = &Prcb;
         break;
     case AMD64_DEBUG_CONTROL_SPACE_KSPECIAL:
         //
@@ -375,14 +389,16 @@ KdpWriteControlSpace(
         MaximumLength = sizeof( KSPECIAL_REGISTERS );
 
         Special = DbgKdQuerySpecialRegisters( DbgKdQueryCurrentProcessorNumber( ) );
-        ControlSpace = &Special;
+        ControlSpace = ( PVOID )Special;
+        //ControlSpace = &Special;
         break;
     case AMD64_DEBUG_CONTROL_SPACE_THREAD:
         //
         // ProcessorPrcb->CurrentThread
         //
         Pointer = Pcr + 0x188;
-        ControlSpace = &Pointer;
+        ControlSpace = ( PVOID )Pointer;
+        //ControlSpace = &Pointer;
         break;
     default:
         ControlSpace = NULL; // Compiler
@@ -395,6 +411,7 @@ KdpWriteControlSpace(
     }
 
     Packet->u.ReadMemory.ActualBytesRead = ( ULONG32 )MaximumLength;
+    Body->Length = ( USHORT )MaximumLength;
 
     if ( Packet->u.ReadMemory.TargetBaseAddress == AMD64_DEBUG_CONTROL_SPACE_KSPECIAL ) {
 
@@ -409,9 +426,10 @@ KdpWriteControlSpace(
         Packet->u.ReadMemory.ActualBytesRead = ( ULONG32 )ReadCount;
     }
 
+    // oddly enough, this does send the body back?
     return KdDebugDevice.KdSendPacket( KdTypeStateManipulate,
                                        &Reciprocate,
-                                       NULL,
+                                       Body,
                                        &KdpContext );
 }
 

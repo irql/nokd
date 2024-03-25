@@ -4,6 +4,7 @@
     <ClCompile Include="kdpl.c" />
     <ClCompile Include="comm\vmwrpc.c" />
     <ClCompile Include="kdapi.c" />
+    <ClCompile Include="comm\uart.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="comm\vmwrpc64.asm" />

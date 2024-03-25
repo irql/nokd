@@ -130,7 +130,7 @@ DbgKdRead8(
 }
 
 BOOLEAN
-KdPollBreakIn(
+KdPollBreakIn_(
 
 )
 {
@@ -645,7 +645,8 @@ KdTryConnect(
         return STATUS_UNSUCCESSFUL;
     }
 
-    //KdDebuggerNotPresent_ = FALSE;
+    KdDebuggerNotPresent_ = FALSE;
+    KdPrint( KD_STARTUP_SIG );
 
     return STATUS_SUCCESS;
 }
@@ -684,8 +685,8 @@ KdDriverLoad(
     // "Guestify" everything!
     //
 
-    ImageBase = ( PVOID )MmKernelBase;
-    ImageSize = ( ULONG )MmKernelSize;
+    ImageBase = ( PVOID )KdKernelBase;
+    ImageSize = ( ULONG )KdKernelSize;
 
     KdImageSection( ImageBase, ".text\0\0", &SectionTextBase, &SectionTextSize );
     KdImageSection( ImageBase, "PAGELK\0", &SectionPageLKBase, &SectionPageLKSize );
@@ -837,8 +838,8 @@ KdDriverLoad(
     //
 
     KdVmwRpcInitialize( );
-    KdTryConnect( );
-    KdDebuggerNotPresent_ = FALSE;
+    //KdTryConnect( );
+    //KdDebuggerNotPresent_ = FALSE;
 
     return STATUS_SUCCESS;
 }

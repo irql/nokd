@@ -266,6 +266,13 @@ KdVmwRpcSendPacket(
     STRING   Buffer = { 0 };
     ULONG32  RecvLength;
 
+    if (PacketType != KdTypeStateManipulate) {
+        //IoKdPrint("KdVmwRpcSendPacket: %d\n", PacketType);
+    }
+    else {
+        //IoKdPrint("KdVmwRpcSendPacket: %d, Api:%lx\n", PacketType,   ((DBGKD_MANIPULATE_STATE64*)Head->Buffer)->ApiNumber);
+    }
+
     HeadLength = Head != NULL ? Head->Length : 0;
     BodyLength = Body != NULL ? Body->Length : 0;
 #if 0
@@ -405,6 +412,10 @@ KdVmwRpcRecvPacket(
     // protocol, somewhat, because everything goes through their
     // host program, which forwards packets to dbgeng.dll
     //
+
+    //if (PacketType != KdTypeCheckQueue)
+        //IoKdPrint("KdVmwRpcRecvPacket: %d\n", PacketType);
+
 
     C_ASSERT( sizeof( KD_PACKET_TYPE ) == sizeof( ULONG32 ) );
 
@@ -641,7 +652,10 @@ KdVmwRpcBufferedIoDone(
 
 )
 {
-    NT_ASSERT( KdpVmwRpcBufferedIoLength >= KdpVmwRpcBufferedIoIndex );
+    if (KdpVmwRpcBufferedIoLength < KdpVmwRpcBufferedIoIndex) {
+        //KdPrint("Len: %d, Idx: %d N: %d\n", KdpVmwRpcBufferedIoLength, KdpVmwRpcBufferedIoIndex, KeGetCurrentProcessorNumber());
+        NT_ASSERT(KdpVmwRpcBufferedIoLength >= KdpVmwRpcBufferedIoIndex);
+    }
 
     KdVmwRpcSendCommandLength( &KdDebugDevice.VmwRpc,
                                KdpVmwRpcBufferedIoLength );
