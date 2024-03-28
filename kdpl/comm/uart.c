@@ -52,71 +52,72 @@
 #define IOCOM_MC_DTS      (1 << 0) // Data terminal ready (DTR, no??)
 
 //
-// Default port is 0x3F8 / COM0. 
+// Default port is 0x2F8 / COM1. 
 //
-USHORT  KdpComPort = 0x3F8; 
-BOOLEAN KdpComOpen = FALSE;
+//USHORT  KdpUartPort = 0x2F8; 
+USHORT  KdpUartPort = 0x3F8; 
+BOOLEAN KdpUartOpen = FALSE;
 
-ULONG32 KdpComBaudRate = 115200;
+ULONG32 KdpUartBaudRate = 115200;
 
 BOOLEAN
-KdpComSendReady(
+KdpUartSendReady(
     VOID
     )
 {
-    return (KeInPort8(KdpComPort + IOCOM_LSR) & IOCOM_LS_THRE) == IOCOM_LS_THRE;
+    return (KeInPort8(KdpUartPort + IOCOM_LSR) & IOCOM_LS_THRE) == IOCOM_LS_THRE;
 }
 
 BOOLEAN
-KdpComReceiveReady(
+KdpUartReceiveReady(
     VOID
     )
 {
-    return (KeInPort8(KdpComPort + IOCOM_LSR) & IOCOM_LS_DR) == IOCOM_LS_DR;
+    return (KeInPort8(KdpUartPort + IOCOM_LSR) & IOCOM_LS_DR) == IOCOM_LS_DR;
 }
 
 BOOLEAN
-KdpComSendChar(
+KdpUartSendChar(
     _In_ UCHAR Char
     )
 {
     ULONG64 Timeout;
 
-    Timeout = 2 * (40000000000ull / KdpComBaudRate);
+    Timeout = 2 * (40000000000ull / KdpUartBaudRate);
 
-    while (Timeout > 0 && !KdpComSendReady())
+    while (Timeout > 0 && !KdpUartSendReady())
         Timeout--;
 
     if (Timeout == 0) {
         return FALSE;
     }
 
-    KeOutPort8(KdpComPort + IOCOM_THR, Char);
+    KeOutPort8(KdpUartPort + IOCOM_THR, Char);
     return TRUE;
 }
 
 BOOLEAN
-KdpComReceiveChar(
+KdpUartReceiveChar(
     _Out_ PUCHAR Char
     )
 {
     ULONG64 Timeout;
 
-    Timeout = 2 * (40000000000ull / KdpComBaudRate);
+    Timeout = 2 * (40000000000ull / KdpUartBaudRate);
 
-    while (Timeout > 0 && !KdpComReceiveReady())
+    while (Timeout > 0 && !KdpUartReceiveReady())
         Timeout--;
 
     if (Timeout == 0) {
         return FALSE;
     }
 
-    *Char = KeInPort8(KdpComPort + IOCOM_RBR);
+    *Char = KeInPort8(KdpUartPort + IOCOM_RBR);
     return TRUE;
 }
 
 BOOLEAN
-KdpComSendString(
+KdpUartSendString(
     _In_ PUCHAR  Buffer,
     _In_ ULONG32 Length
     )
@@ -127,7 +128,7 @@ KdpComSendString(
 
     while (Length--) {
 
-        while (Tries > 0 && !KdpComSendChar(*Buffer)) {
+        while (Tries > 0 && !KdpUartSendChar(*Buffer)) {
             Tries--;
         }
 
@@ -142,7 +143,7 @@ KdpComSendString(
 }
 
 BOOLEAN
-KdpComReceiveString(
+KdpUartReceiveString(
     _In_ PUCHAR  Buffer,
     _In_ ULONG32 Length
     )
@@ -153,7 +154,7 @@ KdpComReceiveString(
 
     while (Length--) {
 
-        while (Tries > 0 && !KdpComReceiveChar(Buffer)) {
+        while (Tries > 0 && !KdpUartReceiveChar(Buffer)) {
             Tries--;
         }
 
@@ -168,7 +169,7 @@ KdpComReceiveString(
 }
 
 NTSTATUS
-KdpComLoadDriver(
+KdpUartLoadDriver(
     VOID
     )
 {
@@ -187,68 +188,68 @@ KdpComLoadDriver(
     // 7.10 SC16C750B defines the reset conditions.
     //
 
-    Mcr = KeInPort8(KdpComPort + IOCOM_MCR);
+    Mcr = KeInPort8(KdpUartPort + IOCOM_MCR);
 
-    KeOutPort8(KdpComPort + IOCOM_MCR, IOCOM_MC_LOOP);
-    KeOutPort8(KdpComPort + IOCOM_MCR, IOCOM_MC_LOOP);
+    KeOutPort8(KdpUartPort + IOCOM_MCR, IOCOM_MC_LOOP);
+    KeOutPort8(KdpUartPort + IOCOM_MCR, IOCOM_MC_LOOP);
 
-    Msr = KeInPort8(KdpComPort + IOCOM_MSR);
+    Msr = KeInPort8(KdpUartPort + IOCOM_MSR);
 
     if ((Msr & (0x10 | 0x20 | 0x40 | 0x80)) == 0) {
         
-        KeOutPort8(KdpComPort + IOCOM_MCR, IOCOM_MC_LOOP | IOCOM_MC_OUT1);
+        KeOutPort8(KdpUartPort + IOCOM_MCR, IOCOM_MC_LOOP | IOCOM_MC_OUT1);
 
-        Msr = KeInPort8(KdpComPort + IOCOM_MSR);
+        Msr = KeInPort8(KdpUartPort + IOCOM_MSR);
 
-        KeOutPort8(KdpComPort + IOCOM_MCR, Mcr);
+        KeOutPort8(KdpUartPort + IOCOM_MCR, Mcr);
 
         if (Msr & 0x40) {
-            KdpComOpen = TRUE;
+            KdpUartOpen = TRUE;
         }
         else {
-            KdpComOpen = FALSE;
+            KdpUartOpen = FALSE;
 
             Char = 0;
             do {
-                KeOutPort8(KdpComPort + 0x14, Char);
+                KeOutPort8(KdpUartPort + 0x14, Char);
 
-                if (KeInPort8(KdpComPort + 0x14) != Char) {
+                if (KeInPort8(KdpUartPort + 0x14) != Char) {
                     return STATUS_UNSUCCESSFUL;
                 }
             } while (++Char != 0);
 
-            KdpComOpen = TRUE;
+            KdpUartOpen = TRUE;
         }
     }
 
     //
     // Disable device interrupts.
     //
-    KeOutPort8(KdpComPort + IOCOM_LCR, 0);
-    KeOutPort8(KdpComPort + IOCOM_IER, 0);
+    KeOutPort8(KdpUartPort + IOCOM_LCR, 0);
+    KeOutPort8(KdpUartPort + IOCOM_IER, 0);
 
-    KeOutPort8(KdpComPort + IOCOM_MCR, IOCOM_MC_RTS | IOCOM_MC_DTS | IOCOM_MC_OUT2);
+    KeOutPort8(KdpUartPort + IOCOM_MCR, IOCOM_MC_RTS | IOCOM_MC_DTS | IOCOM_MC_OUT2);
 
     //
     // Set the Baud
     //
-    Lcr = KeInPort8(KdpComPort + IOCOM_LCR);
+    Lcr = KeInPort8(KdpUartPort + IOCOM_LCR);
 
-    KeOutPort8(KdpComPort + IOCOM_LCR, Lcr | IOCOM_LC_DLA);
-    KeOutPort8(KdpComPort + IOCOM_DLL, 1);
-    KeOutPort8(KdpComPort + IOCOM_DLH, 0);
-    KeOutPort8(KdpComPort + IOCOM_LCR, Lcr);
+    KeOutPort8(KdpUartPort + IOCOM_LCR, Lcr | IOCOM_LC_DLA);
+    KeOutPort8(KdpUartPort + IOCOM_DLL, 1);
+    KeOutPort8(KdpUartPort + IOCOM_DLH, 0);
+    KeOutPort8(KdpUartPort + IOCOM_LCR, Lcr);
 
     //
     // 8-bit word length.
     //
-    KeOutPort8(KdpComPort + IOCOM_LCR, 3);
+    KeOutPort8(KdpUartPort + IOCOM_LCR, 3);
     //
     // Clear & enable FIFO.
     //
-    KeOutPort8(KdpComPort + IOCOM_FCR, IOCOM_FC_EF | IOCOM_FC_CR | IOCOM_FC_CT);
+    KeOutPort8(KdpUartPort + IOCOM_FCR, IOCOM_FC_EF | IOCOM_FC_CR | IOCOM_FC_CT);
 
-    KeInPort8(KdpComPort + IOCOM_RBR);
+    KeInPort8(KdpUartPort + IOCOM_RBR);
 
     return STATUS_SUCCESS;
 }
@@ -265,7 +266,7 @@ KdpGetChecksum(
 
     for (Index = 0; Index < Contents->Length; Index++) {
 
-        Checksum += Contents->Buffer[Index];
+        Checksum += (unsigned char)Contents->Buffer[Index];
     }
 
     return Checksum;
@@ -299,19 +300,17 @@ KdUartConnect(
     VOID
     )
 {
-    KdpComLoadDriver();
-
     KdDebugDevice.KdSendPacket = KdUartSendPacket;
     KdDebugDevice.KdReceivePacket = KdUartRecvPacket;
 
-    return (NT_SUCCESS(KdpComLoadDriver()) && KdpComOpen) 
+    return (NT_SUCCESS(KdpUartLoadDriver()) && KdpUartOpen) 
         ? STATUS_SUCCESS 
         : STATUS_CONNECTION_REFUSED;
 }
 
 ULONG32 KdCompPacketIdExpected   = 0x80800000;
 ULONG32 KdCompNextPacketIdToSend = 0x80800800;
-ULONG32 KdCompRetryCount;
+ULONG32 KdCompRetryCount = 5;
 ULONG32 KdCompNumberRetries;
 
 KD_STATUS
@@ -334,12 +333,12 @@ KdUartSendPacket(
     KdCompNumberRetries = KdCompRetryCount;
 
     do {
-        KdpComSendString((PVOID)&Packet, 16);
-        KdpComSendString((PVOID)Head->Buffer, Head->Length);
+        KdpUartSendString((PVOID)&Packet, 16);
+        KdpUartSendString((PVOID)Head->Buffer, Head->Length);
         if (ARGUMENT_PRESENT(Body)) {
-            KdpComSendString((PVOID)Body->Buffer, Body->Length);
+            KdpUartSendString((PVOID)Body->Buffer, Body->Length);
         }
-        KdpComSendChar(0xAA);
+        KdpUartSendChar(0xAA);
         if (KdUartRecvPacket(KdTypeAcknowledge, 0, 0, 0, KdContext) == KdStatusTimeOut) {
             //KdCompNumberRetries--;
         }
@@ -348,7 +347,7 @@ KdUartSendPacket(
         }
     } while (KdCompNumberRetries != 0);
 
-    KdCompRetryCount          = KdContext->RetryCount;
+    //KdCompRetryCount          = KdContext->RetryCount;
     KdCompNextPacketIdToSend &= ~0x800;
 
     return KdStatusSuccess;
@@ -372,7 +371,7 @@ KdUartRecvPacket(
     KD_PACKET Packet;
 
     if (PacketType == KdTypeCheckQueue) {
-        if (KdpComReceiveReady() && KdpComReceiveChar(&Char) && Char == 0x62) {
+        if (KdpUartReceiveReady() && KdpUartReceiveChar(&Char) && Char == 0x62) {
             return KdStatusSuccess;
         }
         return KdStatusTimeOut;
@@ -386,8 +385,9 @@ KdUartRecvPacket(
     //
     do {
 
-        if (KdpComReceiveReady()) {
-            KdpComReceiveChar(&Char);
+        //if (KdpUartReceiveReady()) {
+        //    KdpUartReceiveChar(&Char);
+        if (KdpUartReceiveChar(&Char)) {
 
             if (Char == 0x62) {
                 KdContext->BreakRequested = 1;
@@ -395,8 +395,9 @@ KdUartRecvPacket(
             }
 
             if (Char == 0x30 || Char == 0x69) {
-                if (Index != 0 && Buffer[Index] != Char) {
+                if (Index != 0 && Buffer[0] != Char) {
                     Index = 0;
+                    continue;
                 }
                 
                 Buffer[Index] = Char;
@@ -413,8 +414,11 @@ KdUartRecvPacket(
     } while (Index < 4 && TimeOut > 0);
 
     if (TimeOut == 0) {
+        //KdPrint("timeoutszz!\n");
         return KdStatusTimeOut;
     }
+
+    //KdPrint("Leader: %x\n", (ULONG32)Buffer[0]);
 
     TimeOut = 1000000;
 
@@ -429,7 +433,7 @@ KdUartRecvPacket(
     
     do {
         do {
-            if (!KdpComReceiveString((PVOID)&Packet.PacketType, 2)) {
+            if (!KdpUartReceiveString((PVOID)&Packet.PacketType, 2)) {
 
                 //KdpResend:
                 //    if (Packet.PacketLeader == 0x69696969) {
@@ -438,55 +442,67 @@ KdUartRecvPacket(
                 //    KdpSendControlPacket(KdTypeAcknowledge, 0);
                 //    continue;
 
+                //KdPrint("yoylo\n");
+
                 return KdStatusTimeOut;
             }
             break;
         } while (FALSE);
 
         if (Packet.PacketLeader == 0x69696969 && Packet.PacketType == KdTypeResend) {
+            //KdPrint("Resend from 448\n");
             return KdStatusResend;
         }
 
-        if (!KdpComReceiveString((PVOID)&Packet.PacketLength, 2)) {
+        if (!KdpUartReceiveString((PVOID)&Packet.PacketLength, 2)) {
+            //KdPrint("Niggafloyd\n");
             return KdStatusTimeOut;
         }
 
-        if (!KdpComReceiveString((PVOID)&Packet.PacketId, 4)) {
+        if (!KdpUartReceiveString((PVOID)&Packet.PacketId, 4)) {
+            //KdPrint("Sup nig\n");
             return KdStatusTimeOut;
         }
 
-        if (!KdpComReceiveString((PVOID)&Packet.Checksum, 4)) {
+        if (!KdpUartReceiveString((PVOID)&Packet.Checksum, 4)) {
+            //KdPrint("Bussdown\n");
             return KdStatusTimeOut;
         }
 
         if (Packet.PacketLeader != 0x69696969) {
             if (PacketType == KdTypeAcknowledge) {
                 if (Packet.PacketId != KdCompPacketIdExpected) {
+                    //KdPrint("wrong packet id\n");
                     KdpSendControlPacket(KdTypeAcknowledge, Packet.PacketId);
                     continue;
                 }
+                //KdPrint("resend pls 471\n");
                 KdpSendControlPacket(KdTypeResend, 0);
                 KdCompNextPacketIdToSend ^= 1u;
             }
             else {
 
-                if (!KdpComReceiveString((PVOID)Head->Buffer, Head->MaximumLength)) {
+                if (!KdpUartReceiveString((PVOID)Head->Buffer, Head->MaximumLength)) {
                     // resend
+                    //KdPrint("Fook\n");
                     return KdStatusTimeOut;
                 }
 
                 if (ARGUMENT_PRESENT(Body)) {
-                    if (!KdpComReceiveString((PVOID)Body->Buffer, Packet.PacketLength - Head->MaximumLength)) {
+                    if (!KdpUartReceiveString((PVOID)Body->Buffer, Packet.PacketLength - Head->MaximumLength)) {
                         // resend
+                        //KdPrint("Tffs\n");
                         return KdStatusTimeOut;
                     }
                 }
 
-                if (!KdpComReceiveString(&Char, 1)) {
+                if (!KdpUartReceiveString(&Char, 1)) {
+                    //KdPrint("Niggas where/\n");
                     return KdStatusTimeOut;
                 }
 
                 if (Char != 0xAA) {
+                    // KdPrint("missing end byte :(");
                     // resend
                     return KdStatusTimeOut;
                 }
@@ -535,5 +551,5 @@ KdpSendControlPacket(
     Packet.PacketLength = 0;
     Packet.Checksum = 0;
     Packet.PacketId = PacketId;
-    KdpComSendString((PVOID)&Packet, 16);
+    KdpUartSendString((PVOID)&Packet, 16);
 }

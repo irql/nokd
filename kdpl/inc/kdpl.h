@@ -111,6 +111,7 @@ EXTERN_C ULONG64                     KdpLoaderDebuggerBlock;
 EXTERN_C KD_CONTEXT                  KdpContext;
 
 #include "vmwrpc.h"
+#include "uart.h"
 #include "kddef.h"
 
 #define DbgKdQueryCurrentProcessorNumber( ) DbgKdRead32( ( ULONG32* )( ( ULONG64 )DbgKdQueryPcr( ) + 0x1A4 ) )//DbgKdRead32( ( ULONG32* )( ( ULONG64 )DbgKdQueryPcr( ) + 0x184 ) )
@@ -178,12 +179,12 @@ KdpReportLoadSymbolsStateChange(
 );
 
 VOID
-KdpPrintString(
+KdpPrintString_(
     _In_ PANSI_STRING String
 );
 
 VOID
-KdPrint(
+KdPrint_(
     _In_ PCHAR Format,
     _In_ ...
 );

@@ -14,5 +14,6 @@
     <ClInclude Include="inc\vmwrpc.h" />
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kddef.h" />
+    <ClInclude Include="inc\uart.h" />
   </ItemGroup>
 </Project>

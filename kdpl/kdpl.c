@@ -130,7 +130,7 @@ DbgKdRead8(
 }
 
 BOOLEAN
-KdPollBreakIn_(
+KdPollBreakIn(
 
 )
 {
@@ -293,7 +293,7 @@ KdpSetContextState(
 }
 
 VOID
-KdpPrintString(
+KdpPrintString_(
     _In_ PANSI_STRING String
 )
 {
@@ -323,7 +323,7 @@ KdpPrintString(
 }
 
 VOID
-KdPrint(
+KdPrint_(
     _In_ PCHAR Format,
     _In_ ...
 )
@@ -342,7 +342,7 @@ KdPrint(
     String.Length = ( USHORT )( strlen( Buffer ) );
     String.Buffer = ( PCHAR )Buffer;
 
-    KdpPrintString( &String );
+    KdpPrintString_( &String );
 }
 
 BOOLEAN
@@ -639,14 +639,20 @@ KdTryConnect(
 
 )
 {
-
+#if 0
     if ( !NT_SUCCESS( KdVmwRpcConnect( ) ) ) {
 
         return STATUS_UNSUCCESSFUL;
     }
+#else
+    if (!NT_SUCCESS(KdUartConnect())) {
+    
+        return STATUS_UNSUCCESSFUL;
+    }
+#endif
 
     KdDebuggerNotPresent_ = FALSE;
-    KdPrint( KD_STARTUP_SIG );
+    KdPrint_( KD_STARTUP_SIG );
 
     return STATUS_SUCCESS;
 }
@@ -756,12 +762,14 @@ KdDriverLoad(
 
     KeProcessorLevel = ( PUSHORT )( KeProcessorLevelAddress + 10 + *( LONG32* )( KeProcessorLevelAddress + 6 ) );
 
+    KdEncodeDataBlockAddress = (ULONG_PTR)KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionTextBase ),
+                                                             SectionTextSize,
+                                                             "80 3D ? ? ? ? ? 74 48");
+    //KdEncodeDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionPageLKBase ),
+    //                                                           SectionPageLKSize,
+    //                                                           "E8 ? ? ? ? 33 DB 48 8D 8F ? ? ? ?" );
 
-    KdEncodeDataBlockAddress = ( ULONG_PTR )KdSearchSignature( ( PVOID )( ( ULONG_PTR )ImageBase + ( ULONG_PTR )SectionPageLKBase ),
-                                                               SectionPageLKSize,
-                                                               "E8 ? ? ? ? 33 DB 48 8D 8F ? ? ? ?" );
-
-    KdEncodeDataBlockAddress =  KdEncodeDataBlockAddress + 5 + ( LONG64 )*( LONG32* )( KdEncodeDataBlockAddress + 1 );
+    //KdEncodeDataBlockAddress =  KdEncodeDataBlockAddress + 5 + ( LONG64 )*( LONG32* )( KdEncodeDataBlockAddress + 1 );
 
     KiWaitNeverAddress = KdEncodeDataBlockAddress + 12;
     KiWaitNeverAddress = ( ULONG64 )( KiWaitNeverAddress + 4 + ( LONG64 )*( LONG32 * )( KiWaitNeverAddress ) );
@@ -836,8 +844,9 @@ KdDriverLoad(
     //
     // TODO: Should require a page fault hook.
     //
-
+#if 0
     KdVmwRpcInitialize( );
+#endif
     //KdTryConnect( );
     //KdDebuggerNotPresent_ = FALSE;
 
