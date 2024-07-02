@@ -46,8 +46,6 @@ DbgKdAcquireDebuggerLock(
 
     KeRaiseIrql(DISPATCH_LEVEL, &PreviousIrql);
 
-    DBG_PRINT("Locking this nigga on %d\n", KeGetPcr()->ProcessorNumber);
-
     do {
         //
         // Check for freeze trap.
@@ -131,8 +129,6 @@ DbgKdFreezeTrap(
     Pcr  = KeGetPcr();
     Trap = FALSE;
 
-    DBG_PRINT("Freeze Trap Hit!\n");
-
     RtlZeroMemory(&ContextRecord, sizeof(NT_CONTEXT));
     RtlZeroMemory(&SpecialRegisters, sizeof(NT_SPECIAL_REGISTERS));
 
@@ -213,12 +209,8 @@ DbgKdFreezeTrap(
 
     InterlockedIncrement32(&DbgKdpFreezeCount);
 
-    DBG_PRINT("FreezeCount: %d EnabledProcessorCount: %d... waiting...\n", DbgKdpFreezeCount, KeEnabledProcessorCount);
-
     while (DbgKdpFreezeCount != KeEnabledProcessorCount)
         ;
-
-    DBG_PRINT("done waiting...\n");
 
     while (DbgKdpFreezeFlags & KD_FREEZE_ACTIVE) {
 
@@ -309,7 +301,6 @@ DbgKdThawProcessors(
     )
 {
     DbgKdpFreezeFlags = 0;
-    //KeSweepLocalCaches();
 }
 
 VOID
@@ -347,8 +338,6 @@ DbgKdFreezeProcessors(
         }
 
         KeWakeNmi(Processor);
-
-        DBG_PRINT("WakeNMI sent to %d\n", Processor);
     }
 
     DbgKdFreezeTrap(TrapFrame, ExceptionFrame, TrapRecord);
