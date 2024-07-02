@@ -445,7 +445,9 @@ KdpReadIoSpace(
     USHORT Address;
 
     //
-    // TODO: Nigvise.
+    // TODO: probably allow the DbgKd to do this, and dont do it here!
+    // 
+    // Although it is very rare that this will be needed.
     //
 
     Address = ( USHORT )Packet->u.ReadWriteIo.IoAddress;

@@ -160,6 +160,7 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="comm\pci.c" />
     <ClCompile Include="comm\uart.c" />
     <ClCompile Include="comm\vmwrpc.c" />
     <ClCompile Include="kdapi.c" />
@@ -169,6 +170,7 @@
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kddef.h" />
     <ClInclude Include="inc\kdpl.h" />
+    <ClInclude Include="inc\pci.h" />
     <ClInclude Include="inc\uart.h" />
     <ClInclude Include="inc\vmwrpc.h" />
   </ItemGroup>

@@ -1,7 +1,9 @@
 ﻿
 #include <kdpl.h>
 
-// cba nigga
+// 
+// Your implementation
+//
 EXTERN_C
 NTSTATUS
 KdImageSection(
@@ -557,8 +559,9 @@ KdpResendPacket:
 
                     if ( Packet.u.Continue2.ControlSet.TraceFlag ) {
 
-                        // maybe we call a function and let the nigcode deal with it?
-                        // my mtf code will catch this and handle it silently but still.
+                        //
+                        // DbgKd layer will handle this.
+                        //
                         Context->EFlags |= 0x100;
                     }
 
@@ -834,10 +837,6 @@ KdDriverLoad(
 
     NT_ASSERT( KdDebuggerDataBlock.Header.OwnerTag == 'GBDK' );
     NT_ASSERT( KdDebuggerDataBlock.Header.Size == 0x380 );
-
-    //
-    // a nigga's gotta say :raised_back_of_hand::skin-tone-4:
-    //
 
     //KdPrint( KD_STARTUP_SIG );
 

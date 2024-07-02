@@ -5,6 +5,7 @@
     <ClCompile Include="comm\vmwrpc.c" />
     <ClCompile Include="kdapi.c" />
     <ClCompile Include="comm\uart.c" />
+    <ClCompile Include="comm\pci.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="comm\vmwrpc64.asm" />
@@ -15,5 +16,6 @@
     <ClInclude Include="inc\dbgkd.h" />
     <ClInclude Include="inc\kddef.h" />
     <ClInclude Include="inc\uart.h" />
+    <ClInclude Include="inc\pci.h" />
   </ItemGroup>
 </Project>

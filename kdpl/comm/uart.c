@@ -1,5 +1,6 @@
 
 #include <kdpl.h>
+#include <pci.h>
 
 #define KeInPort8                   __inbyte
 #define KeOutPort8                  __outbyte
@@ -54,8 +55,8 @@
 //
 // Default port is 0x2F8 / COM1. 
 //
-//USHORT  KdpUartPort = 0x2F8; 
-USHORT  KdpUartPort = 0x3F8; 
+USHORT  KdpUartPort = 0x2F8; 
+//USHORT  KdpUartPort = 0x3F8; 
 BOOLEAN KdpUartOpen = FALSE;
 
 ULONG32 KdpUartBaudRate = 115200;
@@ -168,6 +169,11 @@ KdpUartReceiveString(
     return TRUE;
 }
 
+UCHAR       KdpUartPciBusId;
+UCHAR       KdpUartPciDevId;
+UCHAR       KdpUartPciFunId;
+KPCI_DEVICE KdpUartPciDevice;
+
 NTSTATUS
 KdpUartLoadDriver(
     VOID
@@ -184,9 +190,42 @@ KdpUartLoadDriver(
     UCHAR Mcr;
     UCHAR Msr;
     UCHAR Char;
+
     //
     // 7.10 SC16C750B defines the reset conditions.
     //
+
+    if (FALSE) {
+        ULONG32 Index;
+        //
+        // WCH382/CH382
+        //
+        KdpUartPciBusId = 4;
+        KdpUartPciDevId = 0;
+        KdpUartPciFunId = 0;
+
+        for (Index = 0; Index < sizeof(KPCI_DEVICE); Index++) {
+            ((UCHAR*)&KdpUartPciDevice)[Index] = KdpPciRead08(KdpUartPciBusId, 
+                                                              KdpUartPciDevId,
+                                                              KdpUartPciFunId,
+                                                              Index);
+        }
+
+        //
+        // Reset: 0
+        // Write: PCI_CMD_MEMORY_SPACE, PCI_CMD_IO_SPACE, PCI_CMD_BUS_MASTER, PCI_CMD_INTERRUPT_DISABLE
+        //
+        KdpUartPciDevice.Header.Command &= ~(PCI_CMD_MEMORY_SPACE);
+        KdpUartPciDevice.Header.Command |=  (PCI_CMD_IO_SPACE | PCI_CMD_BUS_MASTER | PCI_CMD_INTERRUPT_DISABLE);
+
+        KdpPciWrite16(KdpUartPciBusId, 
+                      KdpUartPciDevId,
+                      KdpUartPciFunId,
+                      FIELD_OFFSET(KPCI_DEVICE, Header.Command), 
+                      KdpUartPciDevice.Header.Command);
+
+        KdpUartPort = (USHORT)(KdpUartPciDevice.Common.Bar[0] & ~0x3) + 0xC0;
+    }
 
     Mcr = KeInPort8(KdpUartPort + IOCOM_MCR);
 
@@ -266,7 +305,7 @@ KdpGetChecksum(
 
     for (Index = 0; Index < Contents->Length; Index++) {
 
-        Checksum += (unsigned char)Contents->Buffer[Index];
+        Checksum += (UCHAR)Contents->Buffer[Index];
     }
 
     return Checksum;
@@ -310,7 +349,7 @@ KdUartConnect(
 
 ULONG32 KdCompPacketIdExpected   = 0x80800000;
 ULONG32 KdCompNextPacketIdToSend = 0x80800800;
-ULONG32 KdCompRetryCount = 5;
+ULONG32 KdCompRetryCount         = 5;
 ULONG32 KdCompNumberRetries;
 
 KD_STATUS
@@ -414,11 +453,8 @@ KdUartRecvPacket(
     } while (Index < 4 && TimeOut > 0);
 
     if (TimeOut == 0) {
-        //KdPrint("timeoutszz!\n");
         return KdStatusTimeOut;
     }
-
-    //KdPrint("Leader: %x\n", (ULONG32)Buffer[0]);
 
     TimeOut = 1000000;
 
@@ -442,41 +478,33 @@ KdUartRecvPacket(
                 //    KdpSendControlPacket(KdTypeAcknowledge, 0);
                 //    continue;
 
-                //KdPrint("yoylo\n");
-
                 return KdStatusTimeOut;
             }
             break;
         } while (FALSE);
 
         if (Packet.PacketLeader == 0x69696969 && Packet.PacketType == KdTypeResend) {
-            //KdPrint("Resend from 448\n");
             return KdStatusResend;
         }
 
         if (!KdpUartReceiveString((PVOID)&Packet.PacketLength, 2)) {
-            //KdPrint("Niggafloyd\n");
             return KdStatusTimeOut;
         }
 
         if (!KdpUartReceiveString((PVOID)&Packet.PacketId, 4)) {
-            //KdPrint("Sup nig\n");
             return KdStatusTimeOut;
         }
 
         if (!KdpUartReceiveString((PVOID)&Packet.Checksum, 4)) {
-            //KdPrint("Bussdown\n");
             return KdStatusTimeOut;
         }
 
         if (Packet.PacketLeader != 0x69696969) {
             if (PacketType == KdTypeAcknowledge) {
                 if (Packet.PacketId != KdCompPacketIdExpected) {
-                    //KdPrint("wrong packet id\n");
                     KdpSendControlPacket(KdTypeAcknowledge, Packet.PacketId);
                     continue;
                 }
-                //KdPrint("resend pls 471\n");
                 KdpSendControlPacket(KdTypeResend, 0);
                 KdCompNextPacketIdToSend ^= 1u;
             }
@@ -484,25 +512,21 @@ KdUartRecvPacket(
 
                 if (!KdpUartReceiveString((PVOID)Head->Buffer, Head->MaximumLength)) {
                     // resend
-                    //KdPrint("Fook\n");
                     return KdStatusTimeOut;
                 }
 
                 if (ARGUMENT_PRESENT(Body)) {
                     if (!KdpUartReceiveString((PVOID)Body->Buffer, Packet.PacketLength - Head->MaximumLength)) {
                         // resend
-                        //KdPrint("Tffs\n");
                         return KdStatusTimeOut;
                     }
                 }
 
                 if (!KdpUartReceiveString(&Char, 1)) {
-                    //KdPrint("Niggas where/\n");
                     return KdStatusTimeOut;
                 }
 
                 if (Char != 0xAA) {
-                    // KdPrint("missing end byte :(");
                     // resend
                     return KdStatusTimeOut;
                 }
